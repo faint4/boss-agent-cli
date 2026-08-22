@@ -12,6 +12,9 @@ from boss_agent_cli.application.contracts import (
 	JobSearchGoal,
 	JobSourceDetail,
 	JobSummary,
+	RecruitingApplicantBatch,
+	RecruitingOpening,
+	RecruitingProspectContext,
 	PlatformSessionState,
 	WorkspaceKind,
 )
@@ -33,6 +36,7 @@ class InMemoryWorkspaceStore:
 		self._sensitive: dict[WorkspaceKind, bool] = {}
 		self._job_search_goal: JobSearchGoal | None = None
 		self._job_shortlist: tuple[JobSummary, ...] = ()
+		self._recruiting_opening: RecruitingOpening | None = None
 
 	def active_workspace(self, local_session_id: str) -> WorkspaceKind:
 		if local_session_id != self._local_session_id:
@@ -66,6 +70,12 @@ class InMemoryWorkspaceStore:
 
 	def save_job_shortlist(self, items: tuple[JobSummary, ...]) -> None:
 		self._job_shortlist = items
+
+	def load_recruiting_opening(self) -> RecruitingOpening | None:
+		return self._recruiting_opening
+
+	def save_recruiting_opening(self, opening: RecruitingOpening) -> None:
+		self._recruiting_opening = opening
 
 
 class InMemoryCredentialStore:
@@ -108,6 +118,9 @@ class FakeBossAdapter:
 		batch_gate: threading.Event | None = None,
 		greeting_failure: ErrorCode | None = None,
 		greeting_gate: threading.Event | None = None,
+		openings: tuple[RecruitingOpening, ...] = (),
+		applicant_batches: tuple[RecruitingApplicantBatch, ...] = (),
+		prospect_contexts: dict[str, RecruitingProspectContext] | None = None,
 	) -> None:
 		self.state = state
 		self.failure = failure
@@ -119,9 +132,15 @@ class FakeBossAdapter:
 		self.batch_gate = batch_gate
 		self.greeting_failure = greeting_failure
 		self.greeting_gate = greeting_gate
+		self.openings = openings
+		self.applicant_batches = applicant_batches
+		self.prospect_contexts = dict(prospect_contexts or {})
 		self.search_calls = 0
 		self.detail_calls: list[str] = []
 		self.greeting_calls: list[tuple[str, str]] = []
+		self.opening_calls = 0
+		self.applicant_calls: list[str] = []
+		self.prospect_context_calls: list[str] = []
 
 	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		self.probed_workspaces.append(workspace)
@@ -166,3 +185,40 @@ class FakeBossAdapter:
 			self.greeting_gate.wait(timeout=2)
 		if self.greeting_failure is not None:
 			raise BossAdapterFailure(self.greeting_failure)
+
+	def list_openings(self) -> tuple[RecruitingOpening, ...]:
+		self.opening_calls += 1
+		if self.search_failure is not None:
+			raise BossAdapterFailure(self.search_failure)
+		return self.openings
+
+	def inbound_applicants(
+		self,
+		opening_reference: str,
+		*,
+		cancel_requested: Callable[[], bool],
+	) -> Iterable[RecruitingApplicantBatch]:
+		self.applicant_calls.append(opening_reference)
+		for index, batch in enumerate(self.applicant_batches):
+			if self.batch_gate is not None and index > 0:
+				while not self.batch_gate.wait(timeout=0.01):
+					if cancel_requested():
+						return
+			if cancel_requested():
+				return
+			if self.search_failure is not None and self.failure_after_batches == index:
+				raise BossAdapterFailure(self.search_failure)
+			yield batch
+		if self.search_failure is not None and (
+			self.failure_after_batches is None or self.failure_after_batches >= len(self.applicant_batches)
+		):
+			raise BossAdapterFailure(self.search_failure)
+
+	def prospect_context(self, opening_reference: str, prospect_reference: str) -> RecruitingProspectContext:
+		self.prospect_context_calls.append(prospect_reference)
+		if self.search_failure is not None:
+			raise BossAdapterFailure(self.search_failure)
+		try:
+			return self.prospect_contexts[prospect_reference]
+		except KeyError as exc:
+			raise BossAdapterFailure(ErrorCode.ADAPTER_UNAVAILABLE) from exc

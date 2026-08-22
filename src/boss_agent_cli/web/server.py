@@ -26,11 +26,15 @@ from boss_agent_cli.application import (
 	CurrentStateQuery,
 	DomainError,
 	InspectJobCommand,
+	InspectRecruitingProspectCommand,
 	JobSearchGoal,
+	LoadRecruitingOpeningsCommand,
 	LogoutPlatformSessionCommand,
 	PrepareJobGreetingCommand,
 	RequestContext,
 	SetShortlistedCommand,
+	SelectRecruitingOpeningCommand,
+	StartInboundApplicantsCommand,
 	StartJobSearchCommand,
 	SwitchWorkspaceCommand,
 	UpdateJobSearchGoalCommand,
@@ -254,6 +258,10 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			| PrepareJobGreetingCommand
 			| ConfirmWriteIntentCommand
 			| CancelWriteIntentCommand
+			| LoadRecruitingOpeningsCommand
+			| SelectRecruitingOpeningCommand
+			| StartInboundApplicantsCommand
+			| InspectRecruitingProspectCommand
 		)
 		if path == "/api/v1/commands/switch-workspace":
 			if set(payload) != {"request_id", "workspace"} or not isinstance(payload["workspace"], str):
@@ -304,6 +312,38 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
 				return
 			command = StartJobSearchCommand()
+		elif path == "/api/v1/commands/load-recruiting-openings":
+			if set(payload) != {"request_id"}:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = LoadRecruitingOpeningsCommand()
+		elif path == "/api/v1/commands/select-recruiting-opening":
+			reference = payload.get("reference")
+			if (
+				set(payload) != {"request_id", "reference"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = SelectRecruitingOpeningCommand(reference=reference)
+		elif path == "/api/v1/commands/start-inbound-applicants":
+			if set(payload) != {"request_id"}:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = StartInboundApplicantsCommand()
+		elif path == "/api/v1/commands/inspect-recruiting-prospect":
+			reference = payload.get("reference")
+			if (
+				set(payload) != {"request_id", "reference"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = InspectRecruitingProspectCommand(reference=reference)
 		elif path == "/api/v1/commands/cancel-run":
 			run_id = payload.get("run_id")
 			if (

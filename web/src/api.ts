@@ -84,6 +84,22 @@ export function startJobSearch(): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/start-job-search", {});
 }
 
+export function loadRecruitingOpenings(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/load-recruiting-openings", {});
+}
+
+export function selectRecruitingOpening(reference: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/select-recruiting-opening", { reference });
+}
+
+export function startInboundApplicants(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/start-inbound-applicants", {});
+}
+
+export function inspectRecruitingProspect(reference: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/inspect-recruiting-prospect", { reference });
+}
+
 export function cancelRun(runId: string): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/cancel-run", { run_id: runId });
 }

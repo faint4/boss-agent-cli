@@ -13,6 +13,7 @@ const emptySnapshot: ApplicationSnapshot = {
   last_transition: null,
   error: null,
   job_seeking: null,
+  recruiting: null,
 };
 
 describe("deriveView", () => {
@@ -22,6 +23,19 @@ describe("deriveView", () => {
 
   it("renders useful task data as ready", () => {
     expect(deriveView({ ...emptySnapshot, selected_reference: "job-42" })).toBe("ready");
+  });
+
+  it("renders loaded recruiting openings as ready before one is selected", () => {
+    expect(deriveView({
+      ...emptySnapshot,
+      active_workspace: "recruiting",
+      recruiting: {
+        openings: [{ reference: "opening-1", title: "后端工程师", status: "招聘中" }],
+        selected_opening: null,
+        applicants: [],
+        selected_prospect: null,
+      },
+    })).toBe("ready");
   });
 
   it("renders a server-owned recoverable state as recovery", () => {

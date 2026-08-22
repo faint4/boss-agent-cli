@@ -21,20 +21,29 @@ from boss_agent_cli.application.contracts import (
 	DomainError,
 	DomainErrorDetails,
 	ErrorCode,
+	InboundApplicant,
 	InspectJobCommand,
+	InspectRecruitingProspectCommand,
 	JobDetailView,
 	JobSearchBatch,
 	JobSearchGoal,
 	JobSeekingState,
 	JobSourceDetail,
 	JobSummary,
+	LoadRecruitingOpeningsCommand,
 	LogoutPlatformSessionCommand,
 	PlatformSessionState,
 	PrepareJobGreetingCommand,
 	RequestContext,
+	RecruitingApplicantBatch,
+	RecruitingOpening,
+	RecruitingProspectContext,
+	RecruitingState,
 	RunEventKind,
 	RunSummary,
 	SetShortlistedCommand,
+	SelectRecruitingOpeningCommand,
+	StartInboundApplicantsCommand,
 	StartJobSearchCommand,
 	SwitchWorkspaceCommand,
 	UpdateJobSearchGoalCommand,
@@ -54,6 +63,8 @@ class WorkspaceStore(Protocol):
 	def save_job_search_goal(self, goal: JobSearchGoal) -> None: ...
 	def load_job_shortlist(self) -> tuple[JobSummary, ...]: ...
 	def save_job_shortlist(self, items: tuple[JobSummary, ...]) -> None: ...
+	def load_recruiting_opening(self) -> RecruitingOpening | None: ...
+	def save_recruiting_opening(self, opening: RecruitingOpening) -> None: ...
 
 
 class CredentialStore(Protocol):
@@ -82,6 +93,18 @@ class BossAdapter(Protocol):
 	) -> Iterable[JobSearchBatch]: ...
 	def job_detail(self, reference: str) -> JobSourceDetail: ...
 	def send_greeting(self, reference: str, message: str) -> None: ...
+	def list_openings(self) -> tuple[RecruitingOpening, ...]: ...
+	def inbound_applicants(
+		self,
+		opening_reference: str,
+		*,
+		cancel_requested: Callable[[], bool],
+	) -> Iterable[RecruitingApplicantBatch]: ...
+	def prospect_context(
+		self,
+		opening_reference: str,
+		prospect_reference: str,
+	) -> RecruitingProspectContext: ...
 
 
 @dataclass(frozen=True)
@@ -92,10 +115,10 @@ class _WriteIntent:
 
 
 _RECOVERY_ACTIONS = {
-	ErrorCode.AUTHENTICATION_EXPIRED: "Reconnect BOSS, then retry the search",
-	ErrorCode.RATE_LIMITED: "Wait before retrying the search manually",
-	ErrorCode.PLATFORM_RISK_CONTROL: "Complete verification in BOSS, then retry",
-	ErrorCode.ADAPTER_UNAVAILABLE: "Check the BOSS connection, then retry",
+	ErrorCode.AUTHENTICATION_EXPIRED: "Reconnect BOSS, then retry the read-only action",
+	ErrorCode.RATE_LIMITED: "Wait before retrying the read-only action manually",
+	ErrorCode.PLATFORM_RISK_CONTROL: "Complete verification in BOSS, then retry manually",
+	ErrorCode.ADAPTER_UNAVAILABLE: "Check the BOSS connection, then retry the read-only action",
 }
 
 
@@ -126,6 +149,9 @@ class Application:
 		self._job_results: tuple[JobSummary, ...] = ()
 		self._selected_job: JobDetailView | None = None
 		self._selected_job_session_revision: str | None = None
+		self._opening_results: tuple[RecruitingOpening, ...] = ()
+		self._applicant_results: tuple[InboundApplicant, ...] = ()
+		self._selected_prospect: RecruitingProspectContext | None = None
 		self._last_error: DomainErrorDetails | None = None
 		self._write_intent: _WriteIntent | None = None
 
@@ -168,6 +194,21 @@ class Application:
 				recoverable=True,
 				recovery_action="Switch to the Job-Seeking workspace",
 			)
+
+	def _require_recruiting_workspace(self, workspace: WorkspaceKind, context: RequestContext) -> None:
+		if workspace is not WorkspaceKind.RECRUITING:
+			raise DomainError(
+				code=ErrorCode.WORKSPACE_MISMATCH,
+				message="This action belongs to the Recruiting workspace",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Switch to the Recruiting workspace",
+			)
+
+	def _clear_recruiting_sensitive(self) -> None:
+		with self._lock:
+			self._applicant_results = ()
+			self._selected_prospect = None
 
 	def _emit(self, run_id: str, kind: RunEventKind, **payload: object) -> None:
 		with self._lock:
@@ -260,12 +301,23 @@ class Application:
 			| PrepareJobGreetingCommand
 			| ConfirmWriteIntentCommand
 			| CancelWriteIntentCommand
+			| LoadRecruitingOpeningsCommand
+			| SelectRecruitingOpeningCommand
+			| StartInboundApplicantsCommand
+			| InspectRecruitingProspectCommand
 		),
 		context: RequestContext,
 	) -> CommandResult:
 		workspace = self._active_workspace(context)
 		if isinstance(command, SwitchWorkspaceCommand):
 			self._invalidate_write_intent("工作区已切换，本次确认已取消。")
+			if workspace is WorkspaceKind.RECRUITING:
+				with self._lock:
+					if self._active_run is not None and self._run_workspace is workspace:
+						cancel_event = self._cancel_events.get(self._active_run.run_id)
+						if cancel_event is not None:
+							cancel_event.set()
+				self._clear_recruiting_sensitive()
 			try:
 				self._workspace_store.switch_workspace(context.local_session_id, command.workspace)
 				self._credential_store.activate(command.workspace)
@@ -287,10 +339,14 @@ class Application:
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, ConnectPlatformSessionCommand):
 			self._invalidate_write_intent("平台会话正在重新连接，本次确认已取消。")
+			if workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 			self._credential_store.begin_connect(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, LogoutPlatformSessionCommand):
 			self._invalidate_write_intent("平台会话已退出，本次确认已取消。")
+			if workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 			self._credential_store.begin_logout(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, UpdateJobSearchGoalCommand):
@@ -328,12 +384,213 @@ class Application:
 			return self._confirm_write_intent(command, workspace, context)
 		if isinstance(command, CancelWriteIntentCommand):
 			return self._cancel_write_intent(command, workspace, context)
+		if isinstance(command, LoadRecruitingOpeningsCommand):
+			return self._load_recruiting_openings(workspace, context)
+		if isinstance(command, SelectRecruitingOpeningCommand):
+			return self._select_recruiting_opening(command, workspace, context)
+		if isinstance(command, StartInboundApplicantsCommand):
+			return self._start_inbound_applicants(workspace, context)
+		if isinstance(command, InspectRecruitingProspectCommand):
+			return self._inspect_recruiting_prospect(command, workspace, context)
 		raise DomainError(
 			code=ErrorCode.UNSUPPORTED_COMMAND,
 			message=f"Command {type(command).__name__} is not available yet",
 			correlation_id=context.correlation_id,
 			recoverable=False,
 		)
+
+	def _require_connected(self, workspace: WorkspaceKind, context: RequestContext) -> None:
+		if self._credential_store.platform_session_state(workspace) is not PlatformSessionState.CONNECTED:
+			raise DomainError(
+				code=ErrorCode.AUTHENTICATION_REQUIRED,
+				message="Connect BOSS before this remote read",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Connect the BOSS platform session",
+			)
+
+	def _load_recruiting_openings(
+		self,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_recruiting_workspace(workspace, context)
+		self._require_connected(workspace, context)
+		try:
+			openings = self._boss.list_openings()
+		except BossAdapterFailure as failure:
+			details = self._adapter_error(failure, context.correlation_id)
+			with self._lock:
+				self._last_error = details
+			raise DomainError(
+				code=details.code,
+				message=details.message,
+				correlation_id=details.correlation_id,
+				recoverable=True,
+				recovery_action=details.recovery_action,
+			) from failure
+		with self._lock:
+			self._opening_results = openings
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
+
+	def _select_recruiting_opening(
+		self,
+		command: SelectRecruitingOpeningCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_recruiting_workspace(workspace, context)
+		with self._lock:
+			opening = next((item for item in self._opening_results if item.reference == command.reference), None)
+		if opening is None:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Only a visible recruiting opening can be selected",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Load recruiting openings first",
+			)
+		self._workspace_store.save_recruiting_opening(opening)
+		self._clear_recruiting_sensitive()
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=opening.reference)
+
+	def _start_inbound_applicants(
+		self,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_recruiting_workspace(workspace, context)
+		self._require_connected(workspace, context)
+		opening = self._workspace_store.load_recruiting_opening()
+		if opening is None:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Select an opening before loading Inbound Applicants",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Load and select a recruiting opening",
+			)
+		with self._lock:
+			if self._active_run is not None and self._active_run.state in {"running", "cancelling"}:
+				raise DomainError(
+					code=ErrorCode.INVALID_TRANSITION,
+					message="A remote read is already running",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Cancel or wait for the active read",
+				)
+			run_id = self._run_id_factory()
+			cancel_event = threading.Event()
+			self._cancel_events[run_id] = cancel_event
+			self._run_workspace = workspace
+			self._active_run = RunSummary(run_id=run_id, state="running", progress=0)
+			self._applicant_results = ()
+			self._selected_prospect = None
+			self._last_error = None
+			self._events[run_id] = []
+		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
+		self._start_applicant_worker(
+			run_id=run_id,
+			opening_reference=opening.reference,
+			correlation_id=context.correlation_id,
+			cancel_event=cancel_event,
+		)
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=run_id)
+
+	def _start_applicant_worker(
+		self,
+		*,
+		run_id: str,
+		opening_reference: str,
+		correlation_id: str,
+		cancel_event: threading.Event,
+	) -> None:
+		def work() -> None:
+			try:
+				for batch in self._boss.inbound_applicants(
+					opening_reference,
+					cancel_requested=cancel_event.is_set,
+				):
+					if cancel_event.is_set():
+						break
+					progress = max(0, min(100, batch.progress))
+					with self._lock:
+						known = {item.reference: item for item in self._applicant_results}
+						known.update({item.reference: item for item in batch.items})
+						self._applicant_results = tuple(known.values())
+						self._active_run = RunSummary(run_id=run_id, state="running", progress=progress)
+						count = len(self._applicant_results)
+					self._emit(run_id, RunEventKind.PROGRESS, progress=progress, result_count=count)
+				with self._lock:
+					progress = (self._active_run.progress if self._active_run else 0) or 0
+					state = "cancelled" if cancel_event.is_set() else "completed"
+					self._active_run = RunSummary(
+						run_id=run_id,
+						state=state,
+						progress=progress if state == "cancelled" else 100,
+					)
+					if state == "cancelled":
+						self._clear_recruiting_sensitive()
+				self._emit(run_id, RunEventKind.STATE_CHANGED, state=state)
+			except BossAdapterFailure as failure:
+				self._record_recruiting_failure(run_id, self._adapter_error(failure, correlation_id))
+			except (OSError, RuntimeError) as failure:
+				self._record_recruiting_failure(
+					run_id,
+					self._adapter_error(
+						BossAdapterFailure(ErrorCode.ADAPTER_UNAVAILABLE, str(failure)),
+						correlation_id,
+					),
+				)
+
+		threading.Thread(target=work, name=f"boss-{run_id}", daemon=True).start()
+
+	def _record_recruiting_failure(self, run_id: str, details: DomainErrorDetails) -> None:
+		with self._lock:
+			progress = self._active_run.progress if self._active_run else 0
+			self._active_run = RunSummary(run_id=run_id, state="recovery", progress=progress)
+			self._selected_prospect = None
+			self._last_error = details
+		self._emit(run_id, RunEventKind.RECOVERY_REQUIRED, code=details.code.value)
+
+	def _inspect_recruiting_prospect(
+		self,
+		command: InspectRecruitingProspectCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_recruiting_workspace(workspace, context)
+		self._require_connected(workspace, context)
+		opening = self._workspace_store.load_recruiting_opening()
+		with self._lock:
+			visible = command.reference in {item.reference for item in self._applicant_results}
+		if opening is None or not visible:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Only a visible Inbound Applicant can be inspected",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Load Inbound Applicants first",
+			)
+		try:
+			prospect = self._boss.prospect_context(opening.reference, command.reference)
+		except BossAdapterFailure as failure:
+			details = self._adapter_error(failure, context.correlation_id)
+			with self._lock:
+				self._selected_prospect = None
+				self._last_error = details
+			raise DomainError(
+				code=details.code,
+				message=details.message,
+				correlation_id=details.correlation_id,
+				recoverable=True,
+				recovery_action=details.recovery_action,
+			) from failure
+		with self._lock:
+			self._selected_prospect = prospect
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.reference)
 
 	def _start_job_search(self, workspace: WorkspaceKind, context: RequestContext) -> CommandResult:
 		self._require_job_workspace(workspace, context)
@@ -388,20 +645,24 @@ class Application:
 		workspace: WorkspaceKind,
 		context: RequestContext,
 	) -> CommandResult:
-		self._require_job_workspace(workspace, context)
 		with self._lock:
 			cancel_event = self._cancel_events.get(command.run_id)
-			if cancel_event is None or self._active_run is None or self._active_run.run_id != command.run_id:
+			if (
+				cancel_event is None
+				or self._active_run is None
+				or self._active_run.run_id != command.run_id
+				or self._run_workspace is not workspace
+			):
 				raise DomainError(
 					code=ErrorCode.RUN_NOT_FOUND,
-					message="Search run was not found",
+					message="Remote read run was not found",
 					correlation_id=context.correlation_id,
 					recoverable=False,
 				)
 			if self._active_run.state not in {"running", "cancelling"}:
 				raise DomainError(
 					code=ErrorCode.INVALID_TRANSITION,
-					message="Only a running search can be cancelled",
+					message="Only a running remote read can be cancelled",
 					correlation_id=context.correlation_id,
 					recoverable=False,
 				)
@@ -411,6 +672,8 @@ class Application:
 				state="cancelling",
 				progress=self._active_run.progress,
 			)
+			if workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 		self._emit(command.run_id, RunEventKind.STATE_CHANGED, state="cancelling")
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.run_id)
 
@@ -662,13 +925,18 @@ class Application:
 		context: RequestContext,
 	) -> CommandResult:
 		uncertain = failure.code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
-		code = failure.code if failure.code in {
-			ErrorCode.AUTHENTICATION_EXPIRED,
-			ErrorCode.RATE_LIMITED,
-			ErrorCode.PLATFORM_RISK_CONTROL,
-			ErrorCode.UNSUPPORTED_CAPABILITY,
-			ErrorCode.UNCERTAIN_REMOTE_OUTCOME,
-		} else ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+		code = (
+			failure.code
+			if failure.code
+			in {
+				ErrorCode.AUTHENTICATION_EXPIRED,
+				ErrorCode.RATE_LIMITED,
+				ErrorCode.PLATFORM_RISK_CONTROL,
+				ErrorCode.UNSUPPORTED_CAPABILITY,
+				ErrorCode.UNCERTAIN_REMOTE_OUTCOME,
+			}
+			else ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+		)
 		message = (
 			"发送结果不确定。请到 BOSS 官方页面核对；系统不会自动重试。"
 			if uncertain or code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
@@ -784,6 +1052,7 @@ class Application:
 			}:
 				platform_session = PlatformSessionState.RECOVERY
 			job_seeking = None
+			recruiting = None
 			if workspace is WorkspaceKind.JOB_SEEKING:
 				job_seeking = JobSeekingState(
 					goal=self._workspace_store.load_job_search_goal(),
@@ -791,7 +1060,23 @@ class Application:
 					selected_job=self._selected_job,
 					shortlist=self._workspace_store.load_job_shortlist(),
 				)
-			selected_reference = self._selected_job.source.job.reference if self._selected_job is not None else None
+				recruiting = None
+			else:
+				recruiting = RecruitingState(
+					openings=self._opening_results,
+					selected_opening=self._workspace_store.load_recruiting_opening(),
+					applicants=self._applicant_results,
+					selected_prospect=self._selected_prospect,
+				)
+			selected_reference = None
+			if job_seeking is not None and self._selected_job is not None:
+				selected_reference = self._selected_job.source.job.reference
+			elif recruiting is not None:
+				selected_reference = (
+					self._selected_prospect.prospect.reference
+					if self._selected_prospect is not None
+					else (recruiting.selected_opening.reference if recruiting.selected_opening is not None else None)
+				)
 			local_decision = None
 			if job_seeking is not None and selected_reference is not None:
 				if any(item.reference == selected_reference for item in job_seeking.shortlist):
@@ -803,7 +1088,13 @@ class Application:
 				active_run=active_run,
 				selected_reference=selected_reference,
 				local_decision=local_decision,
-				sensitive_content_present=self._workspace_store.sensitive_content_present(workspace),
+				sensitive_content_present=(
+					self._workspace_store.sensitive_content_present(workspace)
+					or (
+						workspace is WorkspaceKind.RECRUITING
+						and bool(self._applicant_results or self._selected_prospect)
+					)
+				),
 				pending_write_intent=(
 					self._write_intent.summary
 					if self._write_intent is not None and self._write_intent.summary.workspace is workspace
@@ -812,6 +1103,7 @@ class Application:
 				last_transition=self._workspace_store.last_transition(context.local_session_id),
 				error=self._last_error,
 				job_seeking=job_seeking,
+				recruiting=recruiting,
 			)
 
 	def events(

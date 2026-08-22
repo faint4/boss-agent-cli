@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { JobJourney, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
+import App, { JobJourney, RecruitingJourney, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -20,6 +20,7 @@ const baseSnapshot: ApplicationSnapshot = {
     selected_job: null,
     shortlist: [],
   },
+  recruiting: null,
 };
 
 function renderPanel(screen: SnapshotView, snapshot: ApplicationSnapshot): string {
@@ -196,5 +197,35 @@ describe("local Web shell states", () => {
 		expect(markup).toContain("BOSS 官方页面核对");
 		expect(markup).not.toContain("确认并发送一次");
 		expect(markup).not.toContain("重试发送");
+	});
+
+	it("renders applicants without loading private context implicitly", () => {
+		const markup = renderToStaticMarkup(
+			<RecruitingJourney snapshot={{ ...baseSnapshot, active_workspace: "recruiting", platform_session: "connected", job_seeking: null, recruiting: {
+				openings: [{ reference: "opening-1", title: "Python 后端工程师", status: "招聘中" }],
+				selected_opening: { reference: "opening-1", title: "Python 后端工程师", status: "招聘中" },
+				applicants: [{ reference: "prospect-1", display_name: "招聘对象甲", headline: "5 年 Python 经验" }],
+				selected_prospect: null,
+			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} />,
+		);
+		expect(markup).toContain("Python 后端工程师");
+		expect(markup).toContain("招聘对象甲");
+		expect(markup).toContain("明确查看简历与沟通");
+		expect(markup).not.toContain("简历详情（仅内存）");
+	});
+
+	it("labels explicitly inspected resume and chat context as memory-only", () => {
+		const prospect = { reference: "prospect-1", display_name: "招聘对象甲", headline: "5 年 Python 经验" };
+		const markup = renderToStaticMarkup(
+			<RecruitingJourney snapshot={{ ...baseSnapshot, active_workspace: "recruiting", platform_session: "connected", job_seeking: null, sensitive_content_present: true, recruiting: {
+				openings: [], selected_opening: { reference: "opening-1", title: "Python 后端工程师", status: "招聘中" }, applicants: [prospect],
+				selected_prospect: { prospect, resume_text: "负责 Python 服务", chat_messages: ["应聘者：您好"], contact_details: ["手机号已保护"] },
+			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} />,
+		);
+		expect(markup).toContain("简历详情（仅内存）");
+		expect(markup).toContain("负责 Python 服务");
+		expect(markup).toContain("应聘者：您好");
+		expect(markup).toContain("手机号已保护");
+		expect(markup).toContain("切换工作区、取消任务或退出时会清除");
 	});
 });

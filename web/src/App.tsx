@@ -5,10 +5,14 @@ import {
   connectPlatformSession,
   confirmWriteIntent,
   inspectJob,
+  inspectRecruitingProspect,
   loadSnapshot,
+  loadRecruitingOpenings,
   logoutPlatformSession,
   prepareJobGreeting,
   setShortlisted,
+  selectRecruitingOpening,
+  startInboundApplicants,
   startJobSearch,
   switchWorkspace,
   updateJobSearchGoal,
@@ -92,6 +96,25 @@ export function JobJourney({ snapshot, busy, onSaveGoal, onSearch, onCancel, onI
   </div>;
 }
 
+export function RecruitingJourney({ snapshot, busy, onLoadOpenings, onSelectOpening, onLoadApplicants, onCancel, onInspectProspect }: {
+  snapshot: ApplicationSnapshot;
+  busy: boolean;
+  onLoadOpenings: () => void;
+  onSelectOpening: (reference: string) => void;
+  onLoadApplicants: () => void;
+  onCancel: (runId: string) => void;
+  onInspectProspect: (reference: string) => void;
+}) {
+  const state = snapshot.recruiting;
+  if (snapshot.active_workspace !== "recruiting" || !state) return null;
+  const running = snapshot.active_run && ["running", "cancelling"].includes(snapshot.active_run.state);
+  return <div className="journey-grid recruiting-journey">
+    <section className="panel"><p className="eyebrow">1 · 招聘职位</p><h2>选择待处理职位</h2><div className="form-actions"><button disabled={busy || snapshot.platform_session !== "connected" || Boolean(running)} onClick={onLoadOpenings}>{state.openings.length ? "刷新职位" : "读取招聘职位"}</button>{state.selected_opening ? <button className="secondary-button" disabled={busy || snapshot.platform_session !== "connected" || Boolean(running)} onClick={onLoadApplicants}>读取新招呼与投递</button> : null}{running && snapshot.active_run ? <button className="danger-button" disabled={busy || snapshot.active_run.state === "cancelling"} onClick={() => onCancel(snapshot.active_run!.run_id)}>取消读取并清除</button> : null}</div><div className="job-list opening-list">{state.openings.map((opening) => <article className={`job-card ${state.selected_opening?.reference === opening.reference ? "selected-card" : ""}`} key={opening.reference}><div><h3>{opening.title}</h3><p>{opening.status || "状态未提供"}</p></div><div className="card-actions"><button className="secondary-button" disabled={busy || Boolean(running)} onClick={() => onSelectOpening(opening.reference)}>{state.selected_opening?.reference === opening.reference ? "当前职位" : "选择职位"}</button></div></article>)}</div>{snapshot.active_run ? <div className="run-progress" aria-live="polite"><strong>{snapshot.active_run.state === "recovery" ? "读取已安全暂停" : `读取 ${snapshot.active_run.state}`}</strong><progress max="100" value={snapshot.active_run.progress ?? 0} /><span>{snapshot.active_run.progress ?? 0}% · 已载入 {state.applicants.length} 位候选人</span></div> : null}</section>
+    <section className="panel"><p className="eyebrow">2 · 新招呼与投递</p><h2>{state.selected_opening ? state.selected_opening.title : "先选择职位"}</h2>{state.applicants.length === 0 ? <p>候选列表尚未读取。简历与沟通内容不会随列表自动加载。</p> : <div className="job-list">{state.applicants.map((applicant) => <article className="job-card" key={applicant.reference}><div><h3>{applicant.display_name}</h3><p>{applicant.headline || "候选人未提供摘要"}</p></div><div className="card-actions"><button disabled={busy || snapshot.platform_session !== "connected"} onClick={() => onInspectProspect(applicant.reference)}>明确查看简历与沟通</button></div></article>)}</div>}{snapshot.sensitive_content_present ? <p className="memory-notice">当前候选数据仅保存在内存；切换工作区、取消任务或退出时会清除。</p> : null}</section>
+    {state.selected_prospect ? <section className="panel detail-panel sensitive-panel"><p className="eyebrow">3 · 明确查看的候选上下文</p><h2>{state.selected_prospect.prospect.display_name}</h2><p className="memory-notice"><strong>简历详情（仅内存）</strong> · 切换工作区、取消任务或退出时会清除。</p><h3>简历</h3><p className="source-copy">{state.selected_prospect.resume_text || "平台未提供简历文本。"}</p><h3>沟通记录</h3>{state.selected_prospect.chat_messages.length ? <ul className="context-list">{state.selected_prospect.chat_messages.map((message, index) => <li key={`${index}-${message}`}>{message}</li>)}</ul> : <p>平台未提供沟通记录。</p>}<h3>联系方式</h3>{state.selected_prospect.contact_details.length ? <ul className="context-list">{state.selected_prospect.contact_details.map((detail) => <li key={detail}>{detail}</li>)}</ul> : <p>平台未提供联系方式。</p>}</section> : null}
+  </div>;
+}
+
 export function WriteConfirmationGate({ intent, busy, onConfirm, onCancel }: {
   intent: WriteIntent;
   busy: boolean;
@@ -144,5 +167,5 @@ export default function App() {
   const perform = useCallback(async (action: () => Promise<ApplicationSnapshot>) => { setCommandPending(true); setCommandError(null); try { const next = await action(); setSnapshot(next); setScreen(deriveView(next)); } catch (error) { setCommandError(error instanceof Error ? error.message : "操作未完成，请重试。"); await refresh(); } finally { setCommandPending(false); } }, [refresh]);
   if (screen === "loading") return <main className="center-card" aria-live="polite"><div className="spinner" /><h1>正在安全启动本地工作台</h1><p>正在建立一次性本机会话并读取服务端状态。</p></main>;
   if (!snapshot) return <main className="center-card error-card"><p className="eyebrow">启动失败</p><h1>无法进入本地工作台</h1><p>{clientError}</p><button onClick={() => void refresh()}>重试</button></main>;
-  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} />{snapshot.pending_write_intent ? <WriteConfirmationGate intent={snapshot.pending_write_intent} busy={commandPending} onConfirm={() => void perform(() => confirmWriteIntent(snapshot.pending_write_intent!.intent_id))} onCancel={() => void perform(() => cancelWriteIntent(snapshot.pending_write_intent!.intent_id))} /> : null}{screen !== "error" && screen !== "recovery" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} onPrepareGreeting={(reference, message) => void perform(() => prepareJobGreeting(reference, message))} /> : null}<footer>仅监听 127.0.0.1 · 每次平台写入都需要单项确认 · Browser Bridge 不在本流程内</footer></main>;
+  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} />{snapshot.pending_write_intent ? <WriteConfirmationGate intent={snapshot.pending_write_intent} busy={commandPending} onConfirm={() => void perform(() => confirmWriteIntent(snapshot.pending_write_intent!.intent_id))} onCancel={() => void perform(() => cancelWriteIntent(snapshot.pending_write_intent!.intent_id))} /> : null}{screen !== "error" && snapshot.active_workspace === "job-seeking" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} onPrepareGreeting={(reference, message) => void perform(() => prepareJobGreeting(reference, message))} /> : null}{screen !== "error" && snapshot.active_workspace === "recruiting" ? <RecruitingJourney snapshot={snapshot} busy={commandPending} onLoadOpenings={() => void perform(loadRecruitingOpenings)} onSelectOpening={(reference) => void perform(() => selectRecruitingOpening(reference))} onLoadApplicants={() => void perform(startInboundApplicants)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspectProspect={(reference) => void perform(() => inspectRecruitingProspect(reference))} /> : null}<footer>仅监听 127.0.0.1 · 敏感招聘内容仅在内存停留 · Browser Bridge 不在本流程内</footer></main>;
 }
