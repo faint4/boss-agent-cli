@@ -1,7 +1,7 @@
 import json
 import os
 import pty
-import select
+import selectors
 import subprocess
 import sys
 import time
@@ -1942,6 +1942,11 @@ def test_click_fallback_cancel_is_chinese_stderr_only(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="PTY is POSIX-only")
 def test_prompt_toolkit_pty_uses_stderr_and_arrow_keys(tmp_path):
+	def readable(fd: int, timeout: float) -> bool:
+		with selectors.DefaultSelector() as selector:
+			selector.register(fd, selectors.EVENT_READ)
+			return bool(selector.select(timeout))
+
 	stderr_master_fd, stderr_slave_fd = pty.openpty()
 	stdout_master_fd, stdout_slave_fd = pty.openpty()
 	env = os.environ.copy()
@@ -1976,8 +1981,7 @@ def test_prompt_toolkit_pty_uses_stderr_and_arrow_keys(tmp_path):
 	try:
 		startup_deadline = time.monotonic() + 5
 		while time.monotonic() < startup_deadline:
-			ready, _, _ = select.select([stderr_master_fd], [], [], 0.1)
-			if not ready:
+			if not readable(stderr_master_fd, 0.1):
 				continue
 			try:
 				chunk = os.read(stderr_master_fd, 65536)
@@ -1994,8 +1998,7 @@ def test_prompt_toolkit_pty_uses_stderr_and_arrow_keys(tmp_path):
 		os.write(stderr_master_fd, b"\r")
 		completion_deadline = time.monotonic() + 5
 		while process.poll() is None and time.monotonic() < completion_deadline:
-			ready, _, _ = select.select([stderr_master_fd], [], [], 0.1)
-			if ready:
+			if readable(stderr_master_fd, 0.1):
 				try:
 					chunk = os.read(stderr_master_fd, 65536)
 				except OSError:
@@ -2008,8 +2011,7 @@ def test_prompt_toolkit_pty_uses_stderr_and_arrow_keys(tmp_path):
 			pytest.fail("prompt_toolkit PTY did not exit after arrow-key selection")
 		process.wait(timeout=2)
 		while True:
-			ready, _, _ = select.select([stderr_master_fd], [], [], 0.05)
-			if not ready:
+			if not readable(stderr_master_fd, 0.05):
 				break
 			try:
 				chunk = os.read(stderr_master_fd, 65536)
@@ -2019,8 +2021,7 @@ def test_prompt_toolkit_pty_uses_stderr_and_arrow_keys(tmp_path):
 				break
 			output.extend(chunk)
 		while True:
-			ready, _, _ = select.select([stdout_master_fd], [], [], 0.05)
-			if not ready:
+			if not readable(stdout_master_fd, 0.05):
 				break
 			try:
 				chunk = os.read(stdout_master_fd, 65536)
