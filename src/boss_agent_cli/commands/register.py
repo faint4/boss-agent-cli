@@ -23,6 +23,7 @@ from boss_agent_cli.commands import (
 	greet,
 	history,
 	interviews,
+	job,
 	login,
 	logout,
 	mark,
@@ -61,6 +62,7 @@ def register_candidate_commands(cli: click.Group) -> None:
 	cli.add_command(status.status_cmd, "status")
 	cli.add_command(platforms.platforms_cmd, "platforms")
 	cli.add_command(doctor.doctor_cmd, "doctor")
+	cli.add_command(job.job_cmd, "job")
 	cli.add_command(search.search_cmd, "search")
 	cli.add_command(detail.detail_cmd, "detail")
 	cli.add_command(greet.greet_cmd, "greet")

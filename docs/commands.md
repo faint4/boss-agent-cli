@@ -20,6 +20,20 @@ boss <命令> --help                      # 查看单个命令选项
 - **单次、无状态的能力调用** → 顶层命令（`boss search` / `boss detail` / `boss greet` …）
 - **需要跨步骤状态、可恢复、或中途要把指引递给真人** → `boss wizard`（goal 取值见 `wizard_catalog`）
 
+Job-Seeking Core Journey 另有一个共享应用合同入口：本地 Web 直接调用应用命令，CLI 使用 `boss job --input-json`，MCP 使用 `boss_job`。三者共享目标、搜索、查看、候选清单、写入意图准备/确认/取消及错误语义。当前共享入口只支持 `zhipin`；其他平台继续使用兼容命令。CLI 的进程结束后不会保留搜索结果或待确认写入，因此完整流程要放在一次 `action=run` 的 `steps` 中；MCP server 会在进程内保留这些状态。
+
+```bash
+boss --json job --input-json '{"action":"run","steps":[
+  {"action":"goal","objective":"寻找后端岗位","keyword":"Python","city":"上海"},
+  {"action":"search"},
+  {"action":"inspect","reference":"$first"},
+  {"action":"prepare-greeting","reference":"$first","message":"您好"},
+  {"action":"confirm","intent_id":"$pending"}
+]}'
+```
+
+`$first` 和 `$pending` 仅是 CLI/MCP 对同一进程内当前首条可见结果、当前待确认写入的引用缩写，不会绕过应用层校验。原有 `boss search`、`boss detail`、`boss greet` 名称继续作为单次兼容命令保留；需要与 Web 完全一致的服务器所有确认、失败恢复和本地决策语义时，迁移到 `boss job` / `boss_job`。`boss_job` 的 `confirm` 只接受应用层生成的 `intent_id`，不能替换已审核的消息内容。
+
 信封的 `hints` 同样按受众分成两条通道（`conventions.hints`）：
 
 | 字段 | 受众 | 形式 |
@@ -34,7 +48,8 @@ TTY 下只把 `operator_actions` 渲染到 stderr；`next_actions` 是纯 Agent 
 | 命令 | 说明 |
 |------|------|
 | `boss` / `boss wizard` | TTY 下启动纯向导；`--input-json` 供 Agent 执行共享 workflow，`--status/--resume/--stop <run_id>` 管理持久化任务 |
-| `boss schema` | 输出完整工具能力描述 JSON（39 个顶层命令 + hr 分组展开，Agent 首先调用） |
+| `boss job --input-json <JSON>` | 调用与本地 Web 相同的 Job-Seeking 应用合同；完整 CLI 流程使用 `action=run` + `steps` |
+| `boss schema` | 输出完整工具能力描述 JSON（40 个顶层命令 + hr 分组展开，Agent 首先调用） |
 | `boss platforms` | 本地平台注册与能力状态（不触网；支持 `--platform` 单平台过滤与 `--capability` 反查，附 `capability_status_legend`） |
 | `boss login` | 用户主动登录（按平台走 Cookie / CDP / QR / 浏览器降级链路） |
 | `boss logout` | 退出登录 |

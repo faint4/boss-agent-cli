@@ -75,6 +75,13 @@ def test_redaction_preserves_public_private_fields_metadata():
 	assert parsed["data"]["private_token"] == "[REDACTED]"
 
 
+def test_redaction_exposes_only_known_platform_session_states():
+	from boss_agent_cli.output import redact_sensitive
+
+	assert redact_sensitive({"platform_session": "connected"}) == {"platform_session": "connected"}
+	assert redact_sensitive({"platform_session": "credential-like-value"}) == {"platform_session": "[REDACTED]"}
+
+
 def test_envelope_error():
 	result = envelope_error(
 		"search",

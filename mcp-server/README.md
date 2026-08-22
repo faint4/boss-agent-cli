@@ -73,13 +73,14 @@ MCP Server 内部调用 `boss` CLI 时会关闭子进程 stdin，避免子进程
 
 ## 可用工具
 
-当前 MCP Server 暴露 **73 个已实现工具**。
+当前 MCP Server 暴露 **74 个已实现工具**。
 
 ### 共享 workflow
 
 | 工具 | 说明 |
 |------|------|
 | `boss_wizard` | 按 role/platform/goal 执行 workflow，或用显式 `run_id` 查询、恢复和停止；与真人 `boss wizard` 共用状态 |
+| `boss_job` | 调用与本地 Web 相同的求职应用合同；MCP 进程内保留搜索、详情和待确认写入状态 |
 
 ### 认证与环境
 

@@ -178,7 +178,7 @@ def test_required_tools_present():
 	"""核心工具应存在。"""
 	names = {t.name for t in TOOLS}
 	required = {
-		"boss_status", "boss_doctor", "boss_search", "boss_detail",
+		"boss_status", "boss_doctor", "boss_job", "boss_search", "boss_detail",
 		"boss_me", "boss_cities",
 		"boss_show", "boss_export", "boss_config", "boss_clean",
 		"boss_stats", "boss_agent_run", "boss_agent_review_approve",
@@ -222,7 +222,7 @@ def test_crawl_tools_only_read_or_locally_shortlist_existing_runs():
 
 def test_tool_count():
 	"""工具总数应与当前注册一致。"""
-	assert len(TOOLS) == 73
+	assert len(TOOLS) == 74
 
 
 def test_mcp_tool_count_matches_readme():
@@ -329,6 +329,13 @@ def test_build_args_wizard_run_and_controls():
 	assert _build_args("boss_wizard", {"action": "stop", "run_id": "run-1"}) == [
 		"wizard", "--stop", "run-1",
 	]
+
+
+def test_build_args_job_preserves_the_shared_action_payload():
+	payload = {"action": "inspect", "reference": "job-1"}
+	args = _build_args("boss_job", payload)
+	assert args[:2] == ["job", "--input-json"]
+	assert json.loads(args[2]) == payload
 
 
 def test_build_args_doctor():
@@ -826,7 +833,7 @@ def test_build_args_favorites_list_is_fixed_to_job_favorites():
 
 def test_tool_count_after_pr41():
 	"""协议服务工具总数应与当前 MCP 暴露能力完全一致。"""
-	assert len(TOOLS) == 73
+	assert len(TOOLS) == 74
 
 
 def test_build_args_shortlist_add():

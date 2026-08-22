@@ -23,6 +23,7 @@ _SENSITIVE_KEY_PARTS = (
 _PUBLIC_METADATA_KEYS = {
 	"private_fields",
 }
+_PUBLIC_PLATFORM_SESSION_STATES = frozenset({"disconnected", "connecting", "connected", "stopping", "recovery"})
 _SENSITIVE_TEXT_PATTERNS = tuple(
 	re.compile(pattern, re.IGNORECASE)
 	for pattern in (
@@ -53,6 +54,8 @@ def redact_sensitive(value: Any) -> Any:
 			key_text = str(key).lower()
 			if _is_error_code_metadata(item) or key_text in _PUBLIC_METADATA_KEYS:
 				redacted[key] = redact_sensitive(item)
+			elif key_text == "platform_session" and item in _PUBLIC_PLATFORM_SESSION_STATES:
+				redacted[key] = item
 			elif any(part in key_text for part in _SENSITIVE_KEY_PARTS) and not isinstance(item, bool):
 				redacted[key] = _REDACTED
 			else:

@@ -49,13 +49,14 @@ Add the server in Cursor Settings -> MCP Servers:
 
 ## Available tools
 
-The current MCP server exposes **73 implemented tools**.
+The current MCP server exposes **74 implemented tools**.
 
 ### Shared workflow
 
 | Tool | Description |
 |------|-------------|
 | `boss_wizard` | Run a role/platform/goal workflow, or query, resume, and stop it by explicit `run_id`; shares state with the human `boss wizard` |
+| `boss_job` | Invoke the same Job-Seeking application contract as local Web while retaining search, detail, and pending write state in the MCP process |
 
 ### Auth and environment
 
