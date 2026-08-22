@@ -24,7 +24,7 @@ uv run patchright install chromium
 uv run boss-web
 ```
 
-该命令由 Python 在随机的 `127.0.0.1` 端口托管已构建的 React UI，并在服务就绪后打开浏览器。启动凭据仅用于本次进程且只保存在内存中。此路径目前只展示共享应用状态，不连接 Browser Bridge，也不会执行真实 BOSS workflow。
+该命令由 Python 在随机的 `127.0.0.1` 端口托管已构建的 React UI，并在服务就绪后打开浏览器。启动凭据仅用于本次进程且只保存在内存中。求职与招聘工作区使用完全分离的数据库、缓存、运行目录和平台会话；Windows 上的平台会话由当前用户的 DPAPI 加密保存。连接操作只会打开 BOSS 官方登录窗口，不读取日常浏览器凭据；退出只删除当前工作区的平台凭据并保留本地工作流数据。Browser Bridge 仍不属于这条启动路径，也不会自动执行 BOSS 写入。
 
 修改 `web/` 下的前端源码后，使用 `cd web && pnpm install --frozen-lockfile && pnpm run build` 更新随 Python 包发布的生产资源。
 

@@ -120,9 +120,35 @@ def test_platform_probe_failure_becomes_a_safe_recoverable_error():
 	assert "secret remote response" not in raised.value.message
 
 
-def test_declared_but_unavailable_command_has_a_typed_error():
+def test_workspace_switch_command_returns_the_new_active_workspace():
 	application = Application(
 		workspace_store=InMemoryWorkspaceStore(
+			local_session_id="local-session-1",
+			active_workspace=WorkspaceKind.JOB_SEEKING,
+		),
+		credential_store=InMemoryCredentialStore(),
+		boss=FakeBossAdapter(),
+	)
+
+	result = application.execute(
+		SwitchWorkspaceCommand(workspace=WorkspaceKind.RECRUITING),
+		RequestContext(
+			local_session_id="local-session-1",
+			correlation_id="request-command",
+		),
+	)
+
+	assert result.snapshot.active_workspace is WorkspaceKind.RECRUITING
+	assert result.snapshot.last_transition == "workspace-switched"
+
+
+def test_workspace_storage_failure_becomes_a_safe_recoverable_error():
+	class FailingWorkspaceStore(InMemoryWorkspaceStore):
+		def switch_workspace(self, local_session_id: str, workspace: WorkspaceKind) -> None:
+			raise OSError("credential-canary must not escape")
+
+	application = Application(
+		workspace_store=FailingWorkspaceStore(
 			local_session_id="local-session-1",
 			active_workspace=WorkspaceKind.JOB_SEEKING,
 		),
@@ -135,12 +161,13 @@ def test_declared_but_unavailable_command_has_a_typed_error():
 			SwitchWorkspaceCommand(workspace=WorkspaceKind.RECRUITING),
 			RequestContext(
 				local_session_id="local-session-1",
-				correlation_id="request-command",
+				correlation_id="request-storage",
 			),
 		)
 
-	assert raised.value.code is ErrorCode.UNSUPPORTED_COMMAND
-	assert raised.value.correlation_id == "request-command"
+	assert raised.value.code is ErrorCode.STORAGE_UNAVAILABLE
+	assert raised.value.recoverable is True
+	assert "credential-canary" not in raised.value.message
 
 
 def test_run_events_resume_after_the_supplied_cursor():

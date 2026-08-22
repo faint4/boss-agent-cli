@@ -85,6 +85,16 @@ class SwitchWorkspaceCommand:
 
 
 @dataclass(frozen=True)
+class ConnectPlatformSessionCommand:
+	pass
+
+
+@dataclass(frozen=True)
+class LogoutPlatformSessionCommand:
+	pass
+
+
+@dataclass(frozen=True)
 class RunSummary:
 	run_id: str
 	state: str

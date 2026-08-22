@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { SnapshotPanel } from "./App";
+import App, { SnapshotPanel, WorkspaceControls } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -58,5 +58,50 @@ describe("local Web shell states", () => {
     });
     expect(markup).toContain("无法读取本地状态");
     expect(markup).toContain("重试");
+  });
+
+  it("keeps the active workspace visible and offers only explicit workspace switching", () => {
+    const markup = renderToStaticMarkup(
+      <WorkspaceControls
+        snapshot={baseSnapshot}
+        busy={false}
+        commandError={null}
+        onSwitch={() => undefined}
+        onConnect={() => undefined}
+        onLogout={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("工作区与平台会话");
+    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain("求职工作区（当前）");
+    expect(markup).toContain("切换到招聘工作区");
+    expect(markup).toContain("连接 BOSS");
+  });
+
+  it("shows stopping and recovery as visible session controls", () => {
+    const stopping = renderToStaticMarkup(
+      <WorkspaceControls
+        snapshot={{ ...baseSnapshot, platform_session: "stopping" }}
+        busy={false}
+        commandError={null}
+        onSwitch={() => undefined}
+        onConnect={() => undefined}
+        onLogout={() => undefined}
+      />,
+    );
+    const recovery = renderToStaticMarkup(
+      <WorkspaceControls
+        snapshot={{ ...baseSnapshot, platform_session: "recovery" }}
+        busy={false}
+        commandError={null}
+        onSwitch={() => undefined}
+        onConnect={() => undefined}
+        onLogout={() => undefined}
+      />,
+    );
+
+    expect(stopping).toContain("正在安全退出");
+    expect(recovery).toContain("重新连接 BOSS");
   });
 });
