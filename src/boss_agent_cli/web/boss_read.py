@@ -1,4 +1,4 @@
-"""Bounded, read-only BOSS adapter for the local Web journey."""
+"""Bounded BOSS adapter for reads and explicitly confirmed single writes."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ class CredentialProvider(Protocol):
 
 
 ReadTransport = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
+WriteTransport = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 
 
 def _http_read(url: str, params: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
@@ -66,12 +67,56 @@ def _http_read(url: str, params: dict[str, Any], credential: dict[str, Any]) -> 
 	return payload
 
 
-class BossReadAdapter:
-	"""Make at most one BOSS request per explicit search/detail action."""
+def _http_write(url: str, data: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+	"""Perform one request. Any transport ambiguity is terminal and never retried."""
 
-	def __init__(self, sessions: CredentialProvider, *, transport: ReadTransport = _http_read) -> None:
+	headers = {
+		**endpoints.DEFAULT_HEADERS,
+		"User-Agent": str(credential.get("user_agent", endpoints.DEFAULT_HEADERS.get("User-Agent", ""))),
+		"Referer": endpoints.WEB_GEEK_JOB_URL,
+	}
+	try:
+		response = httpx.post(
+			url,
+			data=data,
+			cookies=credential.get("cookies", {}),
+			headers=headers,
+			follow_redirects=True,
+			timeout=30,
+		)
+	except httpx.HTTPError as exc:
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME) from exc
+	if response.status_code in {401, 403}:
+		raise BossAdapterFailure(ErrorCode.AUTHENTICATION_EXPIRED)
+	if response.status_code == 429:
+		raise BossAdapterFailure(ErrorCode.RATE_LIMITED)
+	if response.status_code >= 500:
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME)
+	if response.status_code >= 400:
+		raise BossAdapterFailure(ErrorCode.PLATFORM_RISK_CONTROL)
+	try:
+		payload = response.json()
+	except ValueError as exc:
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME) from exc
+	if not isinstance(payload, dict):
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME)
+	return payload
+
+
+class BossReadAdapter:
+	"""Make at most one BOSS request per explicit read or confirmed write action."""
+
+	def __init__(
+		self,
+		sessions: CredentialProvider,
+		*,
+		transport: ReadTransport = _http_read,
+		write_transport: WriteTransport = _http_write,
+	) -> None:
 		self._sessions = sessions
 		self._transport = transport
+		self._write_transport = write_transport
+		self._security_ids: dict[str, str] = {}
 
 	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		return self._sessions.probe_session(workspace)
@@ -120,7 +165,9 @@ class BossReadAdapter:
 		raw_items = data.get("jobList", [])
 		if not isinstance(raw_items, list):
 			raise BossAdapterFailure(ErrorCode.ADAPTER_UNAVAILABLE)
-		items = tuple(self._summary(JobItem.from_api(item)) for item in raw_items if isinstance(item, dict))
+		parsed = tuple(JobItem.from_api(item) for item in raw_items if isinstance(item, dict))
+		self._security_ids = {item.job_id: item.security_id for item in parsed if item.job_id and item.security_id}
+		items = tuple(self._summary(item) for item in parsed)
 		if not cancel_requested():
 			yield JobSearchBatch(items=items, progress=100)
 
@@ -146,6 +193,33 @@ class BossReadAdapter:
 			company_size=str(detail.company_info.get("scale", "")),
 			recruiter=" · ".join(part for part in (detail.boss_name, detail.boss_title) if part),
 		)
+
+	def send_greeting(self, reference: str, message: str) -> None:
+		security_id = self._security_ids.get(reference)
+		if not security_id:
+			raise BossAdapterFailure(
+				ErrorCode.UNSUPPORTED_CAPABILITY,
+				"No server-owned security identifier is available for this job",
+			)
+		try:
+			response = self._write_transport(
+				endpoints.GREET_URL,
+				{"securityId": security_id, "jobId": reference, "greeting": message},
+				self._credential(),
+			)
+		except BossAdapterFailure:
+			raise
+		except (OSError, RuntimeError) as exc:
+			raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME) from exc
+		code = response.get("code")
+		if code == endpoints.CODE_STOKEN_EXPIRED:
+			raise BossAdapterFailure(ErrorCode.AUTHENTICATION_EXPIRED)
+		if code == endpoints.CODE_RATE_LIMITED:
+			raise BossAdapterFailure(ErrorCode.RATE_LIMITED)
+		if code == endpoints.CODE_ACCOUNT_RISK:
+			raise BossAdapterFailure(ErrorCode.PLATFORM_RISK_CONTROL)
+		if code != endpoints.CODE_SUCCESS:
+			raise BossAdapterFailure(ErrorCode.PLATFORM_RISK_CONTROL)
 
 	@staticmethod
 	def _summary(item: JobItem) -> JobSummary:

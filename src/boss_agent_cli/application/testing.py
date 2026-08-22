@@ -71,18 +71,28 @@ class InMemoryWorkspaceStore:
 class InMemoryCredentialStore:
 	def __init__(self, states: dict[WorkspaceKind, PlatformSessionState] | None = None) -> None:
 		self._states = dict(states or {})
+		self._revisions = {workspace: 1 for workspace in self._states}
 
 	def platform_session_state(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		return self._states.get(workspace, PlatformSessionState.DISCONNECTED)
 
 	def activate(self, workspace: WorkspaceKind) -> None:
 		self._states.setdefault(workspace, PlatformSessionState.DISCONNECTED)
+		self.rotate(workspace)
 
 	def begin_connect(self, workspace: WorkspaceKind) -> None:
 		self._states[workspace] = PlatformSessionState.CONNECTING
+		self.rotate(workspace)
 
 	def begin_logout(self, workspace: WorkspaceKind) -> None:
 		self._states[workspace] = PlatformSessionState.STOPPING
+		self.rotate(workspace)
+
+	def session_revision(self, workspace: WorkspaceKind) -> str:
+		return str(self._revisions.get(workspace, 0))
+
+	def rotate(self, workspace: WorkspaceKind) -> None:
+		self._revisions[workspace] = self._revisions.get(workspace, 0) + 1
 
 
 class FakeBossAdapter:
@@ -96,6 +106,8 @@ class FakeBossAdapter:
 		failure_after_batches: int | None = None,
 		details: dict[str, JobSourceDetail] | None = None,
 		batch_gate: threading.Event | None = None,
+		greeting_failure: ErrorCode | None = None,
+		greeting_gate: threading.Event | None = None,
 	) -> None:
 		self.state = state
 		self.failure = failure
@@ -105,8 +117,11 @@ class FakeBossAdapter:
 		self.failure_after_batches = failure_after_batches
 		self.details = dict(details or {})
 		self.batch_gate = batch_gate
+		self.greeting_failure = greeting_failure
+		self.greeting_gate = greeting_gate
 		self.search_calls = 0
 		self.detail_calls: list[str] = []
+		self.greeting_calls: list[tuple[str, str]] = []
 
 	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		self.probed_workspaces.append(workspace)
@@ -144,3 +159,10 @@ class FakeBossAdapter:
 			return self.details[reference]
 		except KeyError as exc:
 			raise BossAdapterFailure(ErrorCode.ADAPTER_UNAVAILABLE) from exc
+
+	def send_greeting(self, reference: str, message: str) -> None:
+		self.greeting_calls.append((reference, message))
+		if self.greeting_gate is not None:
+			self.greeting_gate.wait(timeout=2)
+		if self.greeting_failure is not None:
+			raise BossAdapterFailure(self.greeting_failure)

@@ -20,6 +20,16 @@ class PlatformSessionState(str, Enum):
 	RECOVERY = "recovery"
 
 
+class WriteIntentState(str, Enum):
+	PENDING = "pending"
+	EXECUTING = "executing"
+	SUCCEEDED = "succeeded"
+	REJECTED = "rejected"
+	EXPIRED = "expired"
+	CANCELLED = "cancelled"
+	UNCERTAIN = "uncertain"
+
+
 class ErrorCode(str, Enum):
 	INVALID_COMMAND = "INVALID_COMMAND"
 	INVALID_QUERY = "INVALID_QUERY"
@@ -131,6 +141,22 @@ class SetShortlistedCommand:
 
 
 @dataclass(frozen=True)
+class PrepareJobGreetingCommand:
+	reference: str
+	message: str
+
+
+@dataclass(frozen=True)
+class ConfirmWriteIntentCommand:
+	intent_id: str
+
+
+@dataclass(frozen=True)
+class CancelWriteIntentCommand:
+	intent_id: str
+
+
+@dataclass(frozen=True)
 class JobSummary:
 	reference: str
 	title: str
@@ -184,6 +210,12 @@ class WriteIntentSummary:
 	workspace: WorkspaceKind
 	target_reference: str
 	expires_at: datetime
+	target_label: str = ""
+	action: str = ""
+	payload_preview: str = ""
+	warnings: tuple[str, ...] = ()
+	state: WriteIntentState = WriteIntentState.PENDING
+	outcome_message: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { JobJourney, SnapshotPanel, WorkspaceControls } from "./App";
+import App, { JobJourney, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -137,6 +137,7 @@ describe("local Web shell states", () => {
         onCancel={() => undefined}
         onInspect={() => undefined}
         onShortlist={() => undefined}
+		onPrepareGreeting={() => undefined}
       />,
     );
 
@@ -145,5 +146,55 @@ describe("local Web shell states", () => {
     expect(markup).toContain("平台来源原文");
     expect(markup).toContain("本地匹配理由");
     expect(markup).toContain("1 个已收藏职位");
+	expect(markup).toContain("准备发送招呼");
   });
+
+	it("renders a complete pending write confirmation with explicit controls", () => {
+		const markup = renderToStaticMarkup(
+			<WriteConfirmationGate
+				intent={{
+					intent_id: "intent-1",
+					workspace: "job-seeking",
+					target_reference: "job-1",
+					target_label: "Python 后端工程师 · 示例科技",
+					action: "发送 BOSS 招呼",
+					payload_preview: "您好，我对这个岗位很感兴趣。",
+					warnings: ["确认后将立即发送，且不会自动重试。"],
+					expires_at: "2026-08-22T10:05:00+00:00",
+					state: "pending",
+					outcome_message: null,
+				}}
+				busy={false}
+				onConfirm={() => undefined}
+				onCancel={() => undefined}
+			/>,
+		);
+
+		expect(markup).toContain("发送前确认");
+		expect(markup).toContain("Python 后端工程师 · 示例科技");
+		expect(markup).toContain("您好，我对这个岗位很感兴趣。");
+		expect(markup).toContain("确认并发送一次");
+		expect(markup).toContain("取消，不发送");
+	});
+
+	it("shows uncertain outcome with official verification and no retry control", () => {
+		const markup = renderToStaticMarkup(
+			<WriteConfirmationGate
+				intent={{
+					intent_id: "intent-1", workspace: "job-seeking", target_reference: "job-1",
+					target_label: "目标职位", action: "发送 BOSS 招呼", payload_preview: "您好",
+					warnings: [], expires_at: "2026-08-22T10:05:00+00:00", state: "uncertain",
+					outcome_message: "发送结果不确定。请到 BOSS 官方页面核对；系统不会自动重试。",
+				}}
+				busy={false}
+				onConfirm={() => undefined}
+				onCancel={() => undefined}
+			/>,
+		);
+
+		expect(markup).toContain("发送结果不确定");
+		expect(markup).toContain("BOSS 官方页面核对");
+		expect(markup).not.toContain("确认并发送一次");
+		expect(markup).not.toContain("重试发送");
+	});
 });

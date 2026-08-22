@@ -171,6 +171,14 @@ class PlatformSessionManager:
 				return None
 			return dict(value) if isinstance(value, dict) else None
 
+	def session_revision(self, workspace: WorkspaceKind) -> str:
+		"""Bind a prepared write to the exact active credential generation."""
+
+		with self._lock:
+			if workspace is not self._active_workspace:
+				return "inactive"
+			return str(self._generation)
+
 	def wait_for_idle(self, *, timeout: float) -> bool:
 		with self._lock:
 			threads = tuple(self._threads)

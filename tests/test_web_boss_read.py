@@ -53,6 +53,74 @@ def test_boss_read_adapter_maps_one_bounded_search_without_exposing_security_id(
 	assert "security" not in repr(batches[0]).lower()
 
 
+def test_boss_adapter_sends_one_greeting_with_server_owned_security_id() -> None:
+	read_calls: list[tuple[str, dict[str, Any]]] = []
+	write_calls: list[tuple[str, dict[str, Any]]] = []
+
+	def read_transport(url: str, params: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+		read_calls.append((url, params))
+		return {
+			"code": 0,
+			"zpData": {
+				"jobList": [{"encryptJobId": "job-1", "jobName": "工程师", "securityId": "secret-1"}]
+			},
+		}
+
+	def write_transport(url: str, data: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+		write_calls.append((url, data))
+		return {"code": 0, "zpData": {}}
+
+	adapter = BossReadAdapter(_Sessions(), transport=read_transport, write_transport=write_transport)
+	tuple(adapter.search_jobs(JobSearchGoal("后端", "Python"), cancel_requested=lambda: False))
+
+	adapter.send_greeting("job-1", "您好")
+
+	assert len(read_calls) == 1
+	assert write_calls == [
+		(endpoints.GREET_URL, {"securityId": "secret-1", "jobId": "job-1", "greeting": "您好"})
+	]
+
+
+def test_boss_adapter_will_not_write_without_server_owned_security_id() -> None:
+	writes: list[object] = []
+	adapter = BossReadAdapter(
+		_Sessions(),
+		transport=lambda url, params, credential: {"code": 0, "zpData": {"jobList": []}},
+		write_transport=lambda *args: writes.append(args) or {"code": 0},
+	)
+
+	with pytest.raises(BossAdapterFailure) as raised:
+		adapter.send_greeting("forged-job", "您好")
+
+	assert raised.value.code is ErrorCode.UNSUPPORTED_CAPABILITY
+	assert writes == []
+
+
+def test_boss_adapter_treats_write_transport_failure_as_uncertain_without_retry() -> None:
+	writes = 0
+
+	def write_transport(url: str, data: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+		nonlocal writes
+		writes += 1
+		raise OSError("connection reset after send")
+
+	adapter = BossReadAdapter(
+		_Sessions(),
+		transport=lambda url, params, credential: {
+			"code": 0,
+			"zpData": {"jobList": [{"encryptJobId": "job-1", "securityId": "secret-1"}]},
+		},
+		write_transport=write_transport,
+	)
+	tuple(adapter.search_jobs(JobSearchGoal("后端", "Python"), cancel_requested=lambda: False))
+
+	with pytest.raises(BossAdapterFailure) as raised:
+		adapter.send_greeting("job-1", "您好")
+
+	assert raised.value.code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+	assert writes == 1
+
+
 @pytest.mark.parametrize(
 	("platform_code", "expected"),
 	[

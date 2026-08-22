@@ -5,14 +5,17 @@ from __future__ import annotations
 import secrets
 import threading
 from collections.abc import Callable, Iterable
-from datetime import datetime, timezone
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from boss_agent_cli.application.contracts import (
 	ApplicationEvent,
 	ApplicationStateSnapshot,
 	CancelRunCommand,
+	CancelWriteIntentCommand,
 	CommandResult,
+	ConfirmWriteIntentCommand,
 	ConnectPlatformSessionCommand,
 	CurrentStateQuery,
 	DomainError,
@@ -27,6 +30,7 @@ from boss_agent_cli.application.contracts import (
 	JobSummary,
 	LogoutPlatformSessionCommand,
 	PlatformSessionState,
+	PrepareJobGreetingCommand,
 	RequestContext,
 	RunEventKind,
 	RunSummary,
@@ -35,6 +39,8 @@ from boss_agent_cli.application.contracts import (
 	SwitchWorkspaceCommand,
 	UpdateJobSearchGoalCommand,
 	WorkspaceKind,
+	WriteIntentState,
+	WriteIntentSummary,
 )
 
 
@@ -55,10 +61,11 @@ class CredentialStore(Protocol):
 	def activate(self, workspace: WorkspaceKind) -> None: ...
 	def begin_connect(self, workspace: WorkspaceKind) -> None: ...
 	def begin_logout(self, workspace: WorkspaceKind) -> None: ...
+	def session_revision(self, workspace: WorkspaceKind) -> str: ...
 
 
 class BossAdapterFailure(RuntimeError):
-	"""Typed failure at the external BOSS read boundary."""
+	"""Typed failure at the external BOSS boundary."""
 
 	def __init__(self, code: ErrorCode, message: str = "BOSS read failed") -> None:
 		super().__init__(message)
@@ -74,6 +81,14 @@ class BossAdapter(Protocol):
 		cancel_requested: Callable[[], bool],
 	) -> Iterable[JobSearchBatch]: ...
 	def job_detail(self, reference: str) -> JobSourceDetail: ...
+	def send_greeting(self, reference: str, message: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class _WriteIntent:
+	summary: WriteIntentSummary
+	message: str
+	session_revision: str
 
 
 _RECOVERY_ACTIONS = {
@@ -94,11 +109,15 @@ class Application:
 		credential_store: CredentialStore,
 		boss: BossAdapter,
 		run_id_factory: Callable[[], str] | None = None,
+		intent_id_factory: Callable[[], str] | None = None,
+		clock: Callable[[], datetime] | None = None,
 	) -> None:
 		self._workspace_store = workspace_store
 		self._credential_store = credential_store
 		self._boss = boss
 		self._run_id_factory = run_id_factory or (lambda: f"search-{secrets.token_urlsafe(12)}")
+		self._intent_id_factory = intent_id_factory or (lambda: f"write-{secrets.token_urlsafe(18)}")
+		self._clock = clock or (lambda: datetime.now(timezone.utc))
 		self._lock = threading.RLock()
 		self._active_run: RunSummary | None = None
 		self._run_workspace: WorkspaceKind | None = None
@@ -106,7 +125,28 @@ class Application:
 		self._cancel_events: dict[str, threading.Event] = {}
 		self._job_results: tuple[JobSummary, ...] = ()
 		self._selected_job: JobDetailView | None = None
+		self._selected_job_session_revision: str | None = None
 		self._last_error: DomainErrorDetails | None = None
+		self._write_intent: _WriteIntent | None = None
+
+	def _session_revision(self, workspace: WorkspaceKind) -> str:
+		provider = getattr(self._credential_store, "session_revision", None)
+		if provider is None:
+			return self._credential_store.platform_session_state(workspace).value
+		return str(provider(workspace))
+
+	def _invalidate_write_intent(self, message: str) -> None:
+		with self._lock:
+			if self._write_intent is None or self._write_intent.summary.state is not WriteIntentState.PENDING:
+				return
+			self._write_intent = replace(
+				self._write_intent,
+				summary=replace(
+					self._write_intent.summary,
+					state=WriteIntentState.CANCELLED,
+					outcome_message=message,
+				),
+			)
 
 	def _active_workspace(self, context: RequestContext) -> WorkspaceKind:
 		try:
@@ -217,11 +257,15 @@ class Application:
 			| CancelRunCommand
 			| InspectJobCommand
 			| SetShortlistedCommand
+			| PrepareJobGreetingCommand
+			| ConfirmWriteIntentCommand
+			| CancelWriteIntentCommand
 		),
 		context: RequestContext,
 	) -> CommandResult:
 		workspace = self._active_workspace(context)
 		if isinstance(command, SwitchWorkspaceCommand):
+			self._invalidate_write_intent("工作区已切换，本次确认已取消。")
 			try:
 				self._workspace_store.switch_workspace(context.local_session_id, command.workspace)
 				self._credential_store.activate(command.workspace)
@@ -242,9 +286,11 @@ class Application:
 				) from exc
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, ConnectPlatformSessionCommand):
+			self._invalidate_write_intent("平台会话正在重新连接，本次确认已取消。")
 			self._credential_store.begin_connect(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, LogoutPlatformSessionCommand):
+			self._invalidate_write_intent("平台会话已退出，本次确认已取消。")
 			self._credential_store.begin_logout(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, UpdateJobSearchGoalCommand):
@@ -276,6 +322,12 @@ class Application:
 			return self._inspect_job(command, workspace, context)
 		if isinstance(command, SetShortlistedCommand):
 			return self._set_shortlisted(command, workspace, context)
+		if isinstance(command, PrepareJobGreetingCommand):
+			return self._prepare_job_greeting(command, workspace, context)
+		if isinstance(command, ConfirmWriteIntentCommand):
+			return self._confirm_write_intent(command, workspace, context)
+		if isinstance(command, CancelWriteIntentCommand):
+			return self._cancel_write_intent(command, workspace, context)
 		raise DomainError(
 			code=ErrorCode.UNSUPPORTED_COMMAND,
 			message=f"Command {type(command).__name__} is not available yet",
@@ -318,6 +370,7 @@ class Application:
 			self._active_run = RunSummary(run_id=run_id, state="running", progress=0)
 			self._job_results = ()
 			self._selected_job = None
+			self._selected_job_session_revision = None
 			self._last_error = None
 			self._events[run_id] = []
 		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
@@ -393,6 +446,7 @@ class Application:
 				source=detail,
 				match_reasons=self._match_reasons(self._workspace_store.load_job_search_goal(), detail),
 			)
+			self._selected_job_session_revision = self._session_revision(workspace)
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.reference)
 
 	def _set_shortlisted(
@@ -421,6 +475,253 @@ class Application:
 			items.pop(command.reference, None)
 		self._workspace_store.save_job_shortlist(tuple(items.values()))
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.reference)
+
+	def _prepare_job_greeting(
+		self,
+		command: PrepareJobGreetingCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_job_workspace(workspace, context)
+		if self._credential_store.platform_session_state(workspace) is not PlatformSessionState.CONNECTED:
+			raise DomainError(
+				code=ErrorCode.AUTHENTICATION_REQUIRED,
+				message="Connect BOSS before preparing a greeting",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Connect the BOSS platform session",
+			)
+		message = command.message.strip()
+		if not message or len(message) > 1000:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Greeting must contain between 1 and 1000 characters",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Review the greeting text",
+			)
+		with self._lock:
+			selected = self._selected_job
+			if selected is None or selected.source.job.reference != command.reference:
+				raise DomainError(
+					code=ErrorCode.INVALID_COMMAND,
+					message="Only the currently inspected job can receive a greeting",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Inspect the job before preparing the greeting",
+				)
+			if self._selected_job_session_revision != self._session_revision(workspace):
+				raise DomainError(
+					code=ErrorCode.AUTHENTICATION_EXPIRED,
+					message="BOSS session changed after the job was inspected",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Inspect the job again before preparing a greeting",
+				)
+			if self._write_intent is not None and self._write_intent.summary.state in {
+				WriteIntentState.PENDING,
+				WriteIntentState.EXECUTING,
+			}:
+				raise DomainError(
+					code=ErrorCode.INVALID_TRANSITION,
+					message="Resolve the active write confirmation before preparing another",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Confirm or cancel the active write confirmation",
+				)
+			job = selected.source.job
+			summary = WriteIntentSummary(
+				intent_id=self._intent_id_factory(),
+				workspace=workspace,
+				target_reference=job.reference,
+				target_label=f"{job.title} · {job.company}",
+				action="发送 BOSS 招呼",
+				payload_preview=message,
+				warnings=("确认后将立即向 BOSS 发送一条招呼，且不会自动重试。",),
+				expires_at=self._clock() + timedelta(minutes=5),
+				state=WriteIntentState.PENDING,
+			)
+			self._write_intent = _WriteIntent(
+				summary=summary,
+				message=message,
+				session_revision=self._session_revision(workspace),
+			)
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=summary.intent_id)
+
+	def _write_error(
+		self,
+		*,
+		code: ErrorCode,
+		context: RequestContext,
+		message: str,
+		recovery_action: str | None,
+	) -> DomainError:
+		return DomainError(
+			code=code,
+			message=message,
+			correlation_id=context.correlation_id,
+			recoverable=recovery_action is not None,
+			recovery_action=recovery_action,
+		)
+
+	def _require_pending_intent(
+		self,
+		intent_id: str,
+		context: RequestContext,
+	) -> _WriteIntent:
+		intent = self._write_intent
+		if intent is None or intent.summary.intent_id != intent_id:
+			raise self._write_error(
+				code=ErrorCode.WRITE_INTENT_MISSING,
+				context=context,
+				message="Write confirmation was not found",
+				recovery_action=None,
+			)
+		if intent.summary.state is not WriteIntentState.PENDING:
+			raise self._write_error(
+				code=ErrorCode.WRITE_INTENT_CONSUMED,
+				context=context,
+				message="Write confirmation has already been consumed",
+				recovery_action=None,
+			)
+		return intent
+
+	def _confirm_write_intent(
+		self,
+		command: ConfirmWriteIntentCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		with self._lock:
+			intent = self._require_pending_intent(command.intent_id, context)
+			if self._clock() >= intent.summary.expires_at:
+				self._write_intent = replace(
+					intent,
+					summary=replace(
+						intent.summary,
+						state=WriteIntentState.EXPIRED,
+						outcome_message="确认已过期，没有执行平台写入。",
+					),
+				)
+				raise self._write_error(
+					code=ErrorCode.WRITE_INTENT_EXPIRED,
+					context=context,
+					message="Write confirmation expired; nothing was sent",
+					recovery_action="Prepare a new confirmation",
+				)
+			if workspace is not intent.summary.workspace:
+				self._invalidate_write_intent("工作区已改变，没有执行平台写入。")
+				raise self._write_error(
+					code=ErrorCode.WORKSPACE_MISMATCH,
+					context=context,
+					message="Workspace changed after preparation; nothing was sent",
+					recovery_action="Return to the job and prepare a new confirmation",
+				)
+			if (
+				self._credential_store.platform_session_state(workspace) is not PlatformSessionState.CONNECTED
+				or self._session_revision(workspace) != intent.session_revision
+			):
+				self._invalidate_write_intent("平台会话已改变，没有执行平台写入。")
+				raise self._write_error(
+					code=ErrorCode.AUTHENTICATION_EXPIRED,
+					context=context,
+					message="BOSS session changed after preparation; nothing was sent",
+					recovery_action="Reconnect if needed and prepare a new confirmation",
+				)
+			self._write_intent = replace(
+				intent,
+				summary=replace(intent.summary, state=WriteIntentState.EXECUTING),
+			)
+		try:
+			self._boss.send_greeting(intent.summary.target_reference, intent.message)
+		except BossAdapterFailure as failure:
+			return self._record_write_failure(intent, failure, context)
+		except (OSError, RuntimeError) as failure:
+			return self._record_write_failure(
+				intent,
+				BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME, str(failure)),
+				context,
+			)
+		with self._lock:
+			self._write_intent = replace(
+				intent,
+				summary=replace(
+					intent.summary,
+					state=WriteIntentState.SUCCEEDED,
+					outcome_message="招呼已发送。",
+				),
+			)
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=intent.summary.intent_id)
+
+	def _record_write_failure(
+		self,
+		intent: _WriteIntent,
+		failure: BossAdapterFailure,
+		context: RequestContext,
+	) -> CommandResult:
+		uncertain = failure.code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+		code = failure.code if failure.code in {
+			ErrorCode.AUTHENTICATION_EXPIRED,
+			ErrorCode.RATE_LIMITED,
+			ErrorCode.PLATFORM_RISK_CONTROL,
+			ErrorCode.UNSUPPORTED_CAPABILITY,
+			ErrorCode.UNCERTAIN_REMOTE_OUTCOME,
+		} else ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+		message = (
+			"发送结果不确定。请到 BOSS 官方页面核对；系统不会自动重试。"
+			if uncertain or code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+			else "BOSS 拒绝了本次发送，没有自动重试。"
+		)
+		state = WriteIntentState.UNCERTAIN if code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME else WriteIntentState.REJECTED
+		with self._lock:
+			self._write_intent = replace(
+				intent,
+				summary=replace(intent.summary, state=state, outcome_message=message),
+			)
+			self._last_error = DomainErrorDetails(
+				code=code,
+				message=message,
+				recoverable=True,
+				recovery_action=(
+					"在 BOSS 官方页面核对是否已发送；不要直接重试"
+					if code is ErrorCode.UNCERTAIN_REMOTE_OUTCOME
+					else _RECOVERY_ACTIONS.get(code, "Review the BOSS response before preparing a new confirmation")
+				),
+				correlation_id=context.correlation_id,
+			)
+		raise self._write_error(
+			code=code,
+			context=context,
+			message=message,
+			recovery_action=self._last_error.recovery_action,
+		)
+
+	def _cancel_write_intent(
+		self,
+		command: CancelWriteIntentCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		with self._lock:
+			intent = self._require_pending_intent(command.intent_id, context)
+			if workspace is not intent.summary.workspace:
+				raise self._write_error(
+					code=ErrorCode.WORKSPACE_MISMATCH,
+					context=context,
+					message="Write confirmation belongs to another workspace",
+					recovery_action=None,
+				)
+			self._write_intent = replace(
+				intent,
+				summary=replace(
+					intent.summary,
+					state=WriteIntentState.CANCELLED,
+					outcome_message="已取消，没有执行平台写入。",
+				),
+			)
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=intent.summary.intent_id)
 
 	@staticmethod
 	def _match_reasons(goal: JobSearchGoal | None, detail: JobSourceDetail) -> tuple[str, ...]:
@@ -462,6 +763,19 @@ class Application:
 					recovery_action="Retry the read-only platform check",
 				) from exc
 		with self._lock:
+			if (
+				self._write_intent is not None
+				and self._write_intent.summary.state is WriteIntentState.PENDING
+				and self._clock() >= self._write_intent.summary.expires_at
+			):
+				self._write_intent = replace(
+					self._write_intent,
+					summary=replace(
+						self._write_intent.summary,
+						state=WriteIntentState.EXPIRED,
+						outcome_message="确认已过期，没有执行平台写入。",
+					),
+				)
 			active_run = self._active_run if self._run_workspace is workspace else None
 			if self._last_error is not None and self._last_error.code in {
 				ErrorCode.AUTHENTICATION_EXPIRED,
@@ -490,6 +804,11 @@ class Application:
 				selected_reference=selected_reference,
 				local_decision=local_decision,
 				sensitive_content_present=self._workspace_store.sensitive_content_present(workspace),
+				pending_write_intent=(
+					self._write_intent.summary
+					if self._write_intent is not None and self._write_intent.summary.workspace is workspace
+					else None
+				),
 				last_transition=self._workspace_store.last_transition(context.local_session_id),
 				error=self._last_error,
 				job_seeking=job_seeking,
