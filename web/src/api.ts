@@ -116,6 +116,10 @@ export function prepareJobGreeting(reference: string, message: string): Promise<
   return sendCommand("/api/v1/commands/prepare-job-greeting", { reference, message });
 }
 
+export function prepareRecruitingReply(reference: string, message: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/prepare-recruiting-reply", { reference, message });
+}
+
 export function confirmWriteIntent(intentId: string): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/write-intents/confirm", { intent_id: intentId });
 }

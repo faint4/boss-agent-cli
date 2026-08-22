@@ -92,6 +92,8 @@ export type WriteIntent = {
   workspace: "job-seeking" | "recruiting";
   target_reference: string;
   target_label: string;
+  context_label: string;
+  destination_label: string;
   action: string;
   payload_preview: string;
   warnings: string[];

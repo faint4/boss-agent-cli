@@ -631,6 +631,7 @@ def test_recruiting_journey_api_is_explicit_and_rejects_extra_fields(tmp_path: P
 		),
 		boss=boss,
 		run_id_factory=lambda: "recruiting-api-1",
+		intent_id_factory=lambda: "intent-reply-api",
 	)
 	server = LocalWebServer(static_root=_static_root(tmp_path), authenticator=authenticator, application=application)
 	server.start()
@@ -660,6 +661,32 @@ def test_recruiting_journey_api_is_explicit_and_rejects_extra_fields(tmp_path: P
 			headers=headers,
 			body={"request_id": "inspect-1", "reference": "prospect-1"},
 		)
+		prepare_status, _, prepare_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/prepare-recruiting-reply",
+			headers=headers,
+			body={"request_id": "prepare-reply-1", "reference": "prospect-1", "message": "您好，仅回复一次"},
+		)
+		forged_reply_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/prepare-recruiting-reply",
+			headers=headers,
+			body={
+				"request_id": "prepare-reply-2",
+				"reference": "prospect-1",
+				"message": "替换消息",
+				"friend_id": 98765,
+			},
+		)
+		confirm_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/write-intents/confirm",
+			headers=headers,
+			body={"request_id": "confirm-reply-1", "intent_id": "intent-reply-api"},
+		)
 		rejected_status, _, rejected_body = _request(
 			server,
 			"POST",
@@ -680,6 +707,15 @@ def test_recruiting_journey_api_is_explicit_and_rejects_extra_fields(tmp_path: P
 		== "仅在明确查看后加载的简历"
 	)
 	assert boss.prospect_context_calls == ["prospect-1"]
+	assert prepare_status == 200
+	prepared = json.loads(prepare_body)["snapshot"]["pending_write_intent"]
+	assert prepared["context_label"] == "Python 后端工程师"
+	assert prepared["target_label"] == "招聘对象甲"
+	assert prepared["destination_label"] == "BOSS 招聘沟通会话"
+	assert prepared["payload_preview"] == "您好，仅回复一次"
+	assert forged_reply_status == 400
+	assert confirm_status == 200
+	assert boss.recruiting_reply_calls == [("prospect-1", "您好，仅回复一次")]
 	assert rejected_status == 400
 	assert json.loads(rejected_body)["error"]["code"] == "INVALID_REQUEST"
 

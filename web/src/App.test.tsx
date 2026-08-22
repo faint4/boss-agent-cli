@@ -158,6 +158,8 @@ describe("local Web shell states", () => {
 					workspace: "job-seeking",
 					target_reference: "job-1",
 					target_label: "Python 后端工程师 · 示例科技",
+					context_label: "",
+					destination_label: "BOSS 求职沟通会话",
 					action: "发送 BOSS 招呼",
 					payload_preview: "您好，我对这个岗位很感兴趣。",
 					warnings: ["确认后将立即发送，且不会自动重试。"],
@@ -183,7 +185,8 @@ describe("local Web shell states", () => {
 			<WriteConfirmationGate
 				intent={{
 					intent_id: "intent-1", workspace: "job-seeking", target_reference: "job-1",
-					target_label: "目标职位", action: "发送 BOSS 招呼", payload_preview: "您好",
+					target_label: "目标职位", context_label: "", destination_label: "BOSS 求职沟通会话",
+					action: "发送 BOSS 招呼", payload_preview: "您好",
 					warnings: [], expires_at: "2026-08-22T10:05:00+00:00", state: "uncertain",
 					outcome_message: "发送结果不确定。请到 BOSS 官方页面核对；系统不会自动重试。",
 				}}
@@ -206,7 +209,7 @@ describe("local Web shell states", () => {
 				selected_opening: { reference: "opening-1", title: "Python 后端工程师", status: "招聘中" },
 				applicants: [{ reference: "prospect-1", display_name: "招聘对象甲", headline: "5 年 Python 经验" }],
 				selected_prospect: null,
-			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} />,
+			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} onPrepareReply={() => undefined} />,
 		);
 		expect(markup).toContain("Python 后端工程师");
 		expect(markup).toContain("招聘对象甲");
@@ -220,12 +223,37 @@ describe("local Web shell states", () => {
 			<RecruitingJourney snapshot={{ ...baseSnapshot, active_workspace: "recruiting", platform_session: "connected", job_seeking: null, sensitive_content_present: true, recruiting: {
 				openings: [], selected_opening: { reference: "opening-1", title: "Python 后端工程师", status: "招聘中" }, applicants: [prospect],
 				selected_prospect: { prospect, resume_text: "负责 Python 服务", chat_messages: ["应聘者：您好"], contact_details: ["手机号已保护"] },
-			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} />,
+			} }} busy={false} onLoadOpenings={() => undefined} onSelectOpening={() => undefined} onLoadApplicants={() => undefined} onCancel={() => undefined} onInspectProspect={() => undefined} onPrepareReply={() => undefined} />,
 		);
 		expect(markup).toContain("简历详情（仅内存）");
 		expect(markup).toContain("负责 Python 服务");
 		expect(markup).toContain("应聘者：您好");
 		expect(markup).toContain("手机号已保护");
 		expect(markup).toContain("切换工作区、取消任务或退出时会清除");
+		expect(markup).toContain("回复内容");
+		expect(markup).toContain("这一步只在本机准备确认，不会向 BOSS 发送");
+		expect(markup).toContain("准备确认回复");
+	});
+
+	it("shows the exact recruiting context and destination before confirmation", () => {
+		const markup = renderToStaticMarkup(
+			<WriteConfirmationGate
+				intent={{
+					intent_id: "intent-reply", workspace: "recruiting", target_reference: "prospect-1",
+					target_label: "招聘对象甲", context_label: "Python 后端工程师",
+					destination_label: "BOSS 招聘沟通会话", action: "回复 BOSS 招聘沟通",
+					payload_preview: "您好，方便沟通一下项目经历吗？", warnings: [],
+					expires_at: "2026-08-22T10:05:00+00:00", state: "pending", outcome_message: null,
+				}}
+				busy={false}
+				onConfirm={() => undefined}
+				onCancel={() => undefined}
+			/>,
+		);
+
+		expect(markup).toContain("Python 后端工程师");
+		expect(markup).toContain("招聘对象甲");
+		expect(markup).toContain("BOSS 招聘沟通会话");
+		expect(markup).toContain("您好，方便沟通一下项目经历吗？");
 	});
 });

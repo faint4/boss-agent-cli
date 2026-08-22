@@ -31,6 +31,7 @@ from boss_agent_cli.application import (
 	LoadRecruitingOpeningsCommand,
 	LogoutPlatformSessionCommand,
 	PrepareJobGreetingCommand,
+	PrepareRecruitingReplyCommand,
 	RequestContext,
 	SetShortlistedCommand,
 	SelectRecruitingOpeningCommand,
@@ -256,6 +257,7 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			| InspectJobCommand
 			| SetShortlistedCommand
 			| PrepareJobGreetingCommand
+			| PrepareRecruitingReplyCommand
 			| ConfirmWriteIntentCommand
 			| CancelWriteIntentCommand
 			| LoadRecruitingOpeningsCommand
@@ -396,6 +398,21 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
 				return
 			command = PrepareJobGreetingCommand(reference=reference, message=message)
+		elif path == "/api/v1/commands/prepare-recruiting-reply":
+			reference = payload.get("reference")
+			message = payload.get("message")
+			if (
+				set(payload) != {"request_id", "reference", "message"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+				or not isinstance(message, str)
+				or not message.strip()
+				or len(message) > 1000
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = PrepareRecruitingReplyCommand(reference=reference, message=message)
 		elif path == "/api/v1/write-intents/confirm":
 			intent_id = payload.get("intent_id")
 			if (
