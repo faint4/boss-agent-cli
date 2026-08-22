@@ -58,6 +58,12 @@ class RunEventKind(str, Enum):
 	RECOVERY_REQUIRED = "recovery-required"
 
 
+class AIAssistanceKind(str, Enum):
+	JOB_MATCH = "job-match"
+	JOB_GREETING_DRAFT = "job-greeting-draft"
+	RECRUITING_REPLY_DRAFT = "recruiting-reply-draft"
+
+
 class DomainError(RuntimeError):
 	"""Safe, transport-independent application failure."""
 
@@ -121,6 +127,17 @@ class UpdateJobSearchGoalCommand:
 
 @dataclass(frozen=True)
 class StartJobSearchCommand:
+	pass
+
+
+@dataclass(frozen=True)
+class RequestAIAssistanceCommand:
+	kind: AIAssistanceKind
+	disclosure_acknowledged: bool
+
+
+@dataclass(frozen=True)
+class DiscardAISuggestionCommand:
 	pass
 
 
@@ -198,6 +215,8 @@ ApplicationCommand = (
 	| LogoutPlatformSessionCommand
 	| UpdateJobSearchGoalCommand
 	| StartJobSearchCommand
+	| RequestAIAssistanceCommand
+	| DiscardAISuggestionCommand
 	| CancelRunCommand
 	| ResumeRunCommand
 	| DiscardRunCommand
@@ -291,6 +310,43 @@ class RecruitingState:
 
 
 @dataclass(frozen=True)
+class AIProviderConfiguration:
+	configured: bool
+	provider: str | None = None
+	model: str | None = None
+	endpoint: str | None = None
+
+
+@dataclass(frozen=True)
+class AIAssistanceRequest:
+	kind: AIAssistanceKind
+	target_reference: str
+	facts: tuple[tuple[str, str], ...]
+	data_sent: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AISuggestion:
+	kind: AIAssistanceKind
+	target_reference: str
+	content: str
+	provider: str
+	model: str
+	data_sent: tuple[str, ...]
+	created_at: datetime
+
+
+@dataclass(frozen=True)
+class AIAssistanceState:
+	configured: bool
+	provider: str | None = None
+	model: str | None = None
+	endpoint: str | None = None
+	disclosure: str = "AI 建议会发送界面列出的最少必要数据；建议不会创建或确认平台写入。"
+	suggestion: AISuggestion | None = None
+
+
+@dataclass(frozen=True)
 class RunResult:
 	category: str
 	item_count: int = 0
@@ -353,6 +409,7 @@ class ApplicationStateSnapshot:
 	error: DomainErrorDetails | None = None
 	job_seeking: JobSeekingState | None = None
 	recruiting: RecruitingState | None = None
+	ai_assistance: AIAssistanceState | None = None
 
 
 @dataclass(frozen=True)

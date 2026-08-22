@@ -14,11 +14,13 @@ from datetime import datetime
 from enum import Enum
 
 from boss_agent_cli.application.contracts import (
+	AIAssistanceKind,
 	ApplicationCommand,
 	CancelRunCommand,
 	CancelWriteIntentCommand,
 	ConnectPlatformSessionCommand,
 	ConfirmWriteIntentCommand,
+	DiscardAISuggestionCommand,
 	DiscardRunCommand,
 	DomainError,
 	InspectJobCommand,
@@ -28,6 +30,7 @@ from boss_agent_cli.application.contracts import (
 	LogoutPlatformSessionCommand,
 	PrepareJobGreetingCommand,
 	PrepareRecruitingReplyCommand,
+	RequestAIAssistanceCommand,
 	ResumeRunCommand,
 	SelectRecruitingOpeningCommand,
 	SetShortlistedCommand,
@@ -303,6 +306,18 @@ REQUEST_ID = FieldDefinition(
 	minimum_length=1,
 	maximum_length=128,
 )
+AI_KIND = FieldDefinition(
+	"kind",
+	"string",
+	"AI 辅助类型",
+	minimum_length=1,
+	enum=tuple(kind.value for kind in AIAssistanceKind),
+)
+DISCLOSURE_ACKNOWLEDGED = FieldDefinition(
+	"disclosure_acknowledged",
+	"boolean",
+	"操作员已阅读并同意本次最少必要数据披露",
+)
 
 
 @dataclass(frozen=True)
@@ -393,6 +408,19 @@ WEB_COMMANDS = {
 			"/api/v1/commands/discard-run",
 			(RUN_ID,),
 			lambda payload: DiscardRunCommand(str(payload["run_id"])),
+		),
+		WebCommandDefinition(
+			"/api/v1/commands/request-ai-assistance",
+			(AI_KIND, DISCLOSURE_ACKNOWLEDGED),
+			lambda payload: RequestAIAssistanceCommand(
+				AIAssistanceKind(str(payload["kind"])),
+				bool(payload["disclosure_acknowledged"]),
+			),
+		),
+		WebCommandDefinition(
+			"/api/v1/commands/discard-ai-suggestion",
+			(),
+			lambda payload: DiscardAISuggestionCommand(),
 		),
 		WebCommandDefinition(
 			"/api/v1/commands/inspect-job",

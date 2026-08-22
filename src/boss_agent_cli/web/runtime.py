@@ -6,11 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from boss_agent_cli.application import Application, WorkspaceKind
+from boss_agent_cli.ai.config import AIConfigStore
 from boss_agent_cli.auth.browser import login_via_browser
 from boss_agent_cli.web.dpapi import CredentialProtector, default_credential_protector
 from boss_agent_cli.web.boss_read import BossReadAdapter
 from boss_agent_cli.web.platform_session import LoginProvider, PlatformSessionManager, WorkspaceSessionStore
 from boss_agent_cli.web.workspace import WorkspaceRegistry, default_product_root
+from boss_agent_cli.web.ai_assistance import ConfiguredAIAssistant
 
 
 def _official_boss_login(workspace: WorkspaceKind) -> dict[str, Any]:
@@ -28,10 +30,16 @@ def create_application(
 ) -> Application:
 	"""Create isolated Web workspaces without enabling Browser Bridge."""
 
-	registry = WorkspaceRegistry(product_root or default_product_root(), local_session_id=local_session_id)
+	resolved_root = product_root or default_product_root()
+	registry = WorkspaceRegistry(resolved_root, local_session_id=local_session_id)
 	sessions = PlatformSessionManager(
 		registry=registry,
 		store=WorkspaceSessionStore(registry=registry, protector=protector or default_credential_protector()),
 		login_provider=login_provider or _official_boss_login,
 	)
-	return Application(workspace_store=registry, credential_store=sessions, boss=BossReadAdapter(sessions))
+	return Application(
+		workspace_store=registry,
+		credential_store=sessions,
+		boss=BossReadAdapter(sessions),
+		ai=ConfiguredAIAssistant(AIConfigStore(resolved_root)),
+	)

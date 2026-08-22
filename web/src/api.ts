@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot, JobSearchGoal } from "./state";
+import type { AIAssistanceKind, ApplicationSnapshot, JobSearchGoal } from "./state";
 
 let sessionToken: string | null = null;
 
@@ -151,6 +151,17 @@ export function prepareJobGreeting(reference: string, message: string): Promise<
 
 export function prepareRecruitingReply(reference: string, message: string): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/prepare-recruiting-reply", { reference, message });
+}
+
+export function requestAIAssistance(kind: AIAssistanceKind): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/request-ai-assistance", {
+    kind,
+    disclosure_acknowledged: true,
+  });
+}
+
+export function discardAISuggestion(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/discard-ai-suggestion", {});
 }
 
 export function confirmWriteIntent(intentId: string): Promise<ApplicationSnapshot> {
