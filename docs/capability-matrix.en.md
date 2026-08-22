@@ -96,6 +96,7 @@ Compatibility modes `assisted` and `research` can both call every implemented ca
 
 | Capability | CLI command | Login required | Transport |
 |---|---|---|---|
+| Shared Recruiting journey and single-reply confirmation | `boss hr journey --input-json <JSON>` | Yes | Web-equivalent Application contract; sensitive content remains memory-only |
 | Application inbox | `boss hr applications` | Yes | Recruiter platform adapter |
 | Candidate search | `boss hr candidates` | Yes | Recruiter platform adapter |
 | Recruiter chat list | `boss hr chat` | Yes | Recruiter platform adapter |
@@ -103,7 +104,7 @@ Compatibility modes `assisted` and `research` can both call every implemented ca
 | Recent-message summaries | `boss hr last-messages [--friend-id <id>]` | Yes | Recruiter platform adapter |
 | Online resume view | `boss hr resume <geek_id> --job-id <id> --security-id <id>` | Yes | Recruiter platform adapter |
 | Contact exchange | `boss hr resume --exchange --friend-id <friend_id> [--type wechat]` | Yes | Recruiter platform adapter |
-| Reply to candidate | `boss hr reply <friend_id> <message>` | Yes | Recruiter platform adapter |
+| Reply to candidate (legacy immediate write) | `boss hr reply <friend_id> <message>` | Yes | Recruiter adapter; new automation migrates to `hr journey` |
 | Request attached resume | `boss hr request-resume <friend_id>` | Yes | Recruiter platform adapter |
 | Job listing and online/offline operations | `boss hr jobs` | Yes | httpx |
 

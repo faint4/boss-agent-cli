@@ -21,8 +21,13 @@ from mcp.types import TextContent, Tool
 from boss_agent_cli.mcp_args import _build_args
 from boss_agent_cli.mcp_tools import TOOLS
 from boss_agent_cli.application import DomainError
-from boss_agent_cli.application.job_surface import JobSeekingSurface, domain_error_payload
+from boss_agent_cli.application.job_surface import JobSeekingSurface, domain_error_payload as job_error_payload
+from boss_agent_cli.application.recruiting_surface import (
+	RecruitingSurface,
+	domain_error_payload as recruiting_error_payload,
+)
 from boss_agent_cli.job_runtime import create_job_seeking_surface
+from boss_agent_cli.recruiting_runtime import create_recruiting_surface
 
 # 向后兼容的再导出：这些符号在拆分前属于本模块，`mcp-server/server.py` wrapper
 # 与既有测试仍按 `boss_agent_cli.mcp_server.<name>` 取用。本模块自身不再使用它们，
@@ -86,6 +91,11 @@ _JOB_PLATFORM = "zhipin"
 _JOB_ROLE = "candidate"
 _JOB_SURFACE: JobSeekingSurface | None = None
 _JOB_SURFACE_LOCK = threading.Lock()
+_RECRUITING_DATA_DIR = Path("~/.boss-agent").expanduser()
+_RECRUITING_PLATFORM = "zhipin"
+_RECRUITING_SURFACE: RecruitingSurface | None = None
+_RECRUITING_SURFACE_LOCK = threading.Lock()
+_RECRUITING_INVOKE_LOCK = threading.RLock()
 
 
 def _configure_boss_invocation(
@@ -96,7 +106,9 @@ def _configure_boss_invocation(
 	role: str | None = None,
 ) -> None:
 	"""Configure global flags passed from the MCP host to the underlying boss CLI."""
-	global _BOSS_BIN, _BOSS_GLOBAL_ARGS, _JOB_DATA_DIR, _JOB_PLATFORM, _JOB_ROLE, _JOB_SURFACE
+	global _BOSS_BIN, _BOSS_GLOBAL_ARGS
+	global _JOB_DATA_DIR, _JOB_PLATFORM, _JOB_ROLE, _JOB_SURFACE
+	global _RECRUITING_DATA_DIR, _RECRUITING_PLATFORM, _RECRUITING_SURFACE
 	_BOSS_BIN = boss_bin
 	args: list[str] = []
 	if data_dir:
@@ -110,6 +122,9 @@ def _configure_boss_invocation(
 	_JOB_PLATFORM = platform or "zhipin"
 	_JOB_ROLE = role or "candidate"
 	_JOB_SURFACE = None
+	_RECRUITING_DATA_DIR = Path(data_dir).expanduser() if data_dir else Path("~/.boss-agent").expanduser()
+	_RECRUITING_PLATFORM = platform or "zhipin"
+	_RECRUITING_SURFACE = None
 
 
 def _run_boss(*args: str) -> dict[str, Any]:
@@ -178,7 +193,7 @@ def _run_job(arguments: dict[str, Any]) -> dict[str, Any]:
 	try:
 		data = _job_surface().invoke(arguments)
 	except DomainError as exc:
-		error = domain_error_payload(exc)
+		error = job_error_payload(exc)
 		return {
 			"ok": False,
 			"schema_version": "1.0",
@@ -199,10 +214,65 @@ def _run_job(arguments: dict[str, Any]) -> dict[str, Any]:
 	}
 
 
+def _recruiting_surface() -> RecruitingSurface:
+	global _RECRUITING_SURFACE
+	with _RECRUITING_SURFACE_LOCK:
+		if _RECRUITING_SURFACE is None:
+			_RECRUITING_SURFACE = create_recruiting_surface(
+				data_dir=_RECRUITING_DATA_DIR,
+				platform=_RECRUITING_PLATFORM,
+			)
+	return _RECRUITING_SURFACE
+
+
+def _run_recruiting(arguments: dict[str, Any]) -> dict[str, Any]:
+	"""Invoke Recruiting in process so MCP retains only transient journey state."""
+
+	if _RECRUITING_PLATFORM != "zhipin":
+		return {
+			"ok": False,
+			"schema_version": "1.0",
+			"command": "hr-journey",
+			"data": None,
+			"pagination": None,
+			"error": {
+				"code": "UNSUPPORTED_CAPABILITY",
+				"message": "boss_hr_journey currently supports only the zhipin platform",
+				"recoverable": True,
+				"recovery_action": "Start MCP with --platform zhipin or use a legacy platform-specific tool",
+			},
+			"hints": None,
+		}
+	try:
+		with _RECRUITING_INVOKE_LOCK:
+			data = _recruiting_surface().invoke(arguments)
+	except DomainError as exc:
+		return {
+			"ok": False,
+			"schema_version": "1.0",
+			"command": "hr-journey",
+			"data": None,
+			"pagination": None,
+			"error": recruiting_error_payload(exc),
+			"hints": None,
+		}
+	return {
+		"ok": True,
+		"schema_version": "1.0",
+		"command": "hr-journey",
+		"data": data,
+		"pagination": None,
+		"error": None,
+		"hints": None,
+	}
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 	if name == "boss_job":
 		result = _run_job(arguments)
+	elif name == "boss_hr_journey":
+		result = _run_recruiting(arguments)
 	else:
 		args = _build_args(name, arguments)
 		result = _run_boss(*args)

@@ -192,6 +192,7 @@ def test_required_tools_present():
 		"boss_shortlist_annotate", "boss_shortlist_compare",
 		"boss_hr_jobs",
 		"boss_hr_jobs_detail",
+		"boss_hr_journey",
 	}
 	missing = required - names
 	assert not missing, f"缺少核心工具: {missing}"
@@ -222,7 +223,7 @@ def test_crawl_tools_only_read_or_locally_shortlist_existing_runs():
 
 def test_tool_count():
 	"""工具总数应与当前注册一致。"""
-	assert len(TOOLS) == 74
+	assert len(TOOLS) == 75
 
 
 def test_mcp_tool_count_matches_readme():
@@ -833,7 +834,7 @@ def test_build_args_favorites_list_is_fixed_to_job_favorites():
 
 def test_tool_count_after_pr41():
 	"""协议服务工具总数应与当前 MCP 暴露能力完全一致。"""
-	assert len(TOOLS) == 74
+	assert len(TOOLS) == 75
 
 
 def test_build_args_shortlist_add():
@@ -896,6 +897,16 @@ def test_build_args_watch_remove():
 def test_build_args_hr_applications():
 	args = _build_args("boss_hr_applications", {"job_id": "123", "label_id": 2, "page": 3})
 	assert args == ["hr", "applications", "--job-id", "123", "--label-id", "2", "--page", "3"]
+
+
+def test_build_args_hr_journey():
+	args = _build_args("boss_hr_journey", {"action": "confirm", "intent_id": "$pending"})
+	assert args == [
+		"hr",
+		"journey",
+		"--input-json",
+		'{"action":"confirm","intent_id":"$pending"}',
+	]
 
 
 def test_build_args_hr_candidates():

@@ -46,6 +46,7 @@ from boss_agent_cli.commands.recruiter import applications as recruiter_applicat
 from boss_agent_cli.commands.recruiter import candidates as recruiter_candidates
 from boss_agent_cli.commands.recruiter import chat as recruiter_chat
 from boss_agent_cli.commands.recruiter import jobs as recruiter_jobs
+from boss_agent_cli.commands.recruiter import journey as recruiter_journey
 from boss_agent_cli.commands.recruiter import reply as recruiter_reply
 from boss_agent_cli.commands.recruiter import request_resume as recruiter_request_resume
 from boss_agent_cli.commands.recruiter import resume as recruiter_resume
@@ -128,6 +129,7 @@ def register_recruiter_commands(cli: click.Group) -> None:
 	hr_group.add_command(recruiter_chat.recruiter_chatmsg_cmd, "chatmsg")
 	hr_group.add_command(recruiter_chat.recruiter_last_messages_cmd, "last-messages")
 	hr_group.add_command(recruiter_jobs.jobs_group, "jobs")
+	hr_group.add_command(recruiter_journey.recruiting_journey_cmd, "journey")
 	hr_group.add_command(recruiter_candidates.candidates_cmd, "candidates")
 	hr_group.add_command(recruiter_reply.reply_cmd, "reply")
 	hr_group.add_command(recruiter_request_resume.request_resume_cmd, "request-resume")

@@ -73,7 +73,7 @@ MCP Server 内部调用 `boss` CLI 时会关闭子进程 stdin，避免子进程
 
 ## 可用工具
 
-当前 MCP Server 暴露 **74 个已实现工具**。
+当前 MCP Server 暴露 **75 个已实现工具**。
 
 ### 共享 workflow
 
@@ -149,11 +149,14 @@ MCP Server 内部调用 `boss` CLI 时会关闭子进程 stdin，避免子进程
 
 | 工具 | 说明 |
 |------|------|
+| `boss_hr_journey` | Web/CLI/MCP 共享招聘主流程；候选人上下文仅在内存中使用，回复必须 `prepare-reply` 后单次 `confirm` 或 `cancel-write` |
 | `boss_hr_jobs` | 职位列表与上下线管理 |
 | `boss_hr_jobs_detail` | 查看招聘者职位详情 |
 | `boss_hr_applications` / `boss_hr_candidates` | 投递申请与候选人搜索 |
 | `boss_hr_resume` / `boss_hr_exchange` / `boss_hr_request_resume` | 在线简历、联系方式交换与附件简历请求 |
 | `boss_hr_chat` / `boss_hr_chatmsg` / `boss_hr_last_messages` / `boss_hr_reply` | 招聘者沟通读取与回复 |
+
+新自动化应优先使用 `boss_hr_journey`。`boss_hr_reply` 作为兼容工具保留且会立即发送；写入流程应迁移为 `prepare-reply`，并且只确认服务端返回的 `intent_id`。共享适配器不会持久化简历、聊天、联系方式或回复文本。
 
 所有已实现工具都会暴露。`ACCOUNT_RISK`、`AUTH_REQUIRED`、`RATE_LIMITED` 和 `NOT_SUPPORTED` 仍通过标准 JSON 错误信封返回，Agent 应读取 `error.recovery_action`。
 
