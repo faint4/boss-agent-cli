@@ -72,7 +72,8 @@ describe("deriveView", () => {
   it("keeps a terminal write outcome visible instead of hiding it behind recovery", () => {
 	const intent = {
 		intent_id: "intent-1", workspace: "job-seeking" as const, target_reference: "job-1",
-		target_label: "目标职位", action: "发送 BOSS 招呼", payload_preview: "您好", warnings: [],
+		target_label: "目标职位", context_label: "", destination_label: "BOSS 求职沟通会话",
+		action: "发送 BOSS 招呼", payload_preview: "您好", warnings: [],
 		expires_at: "2026-08-22T10:05:00+00:00", state: "uncertain" as const,
 		outcome_message: "请到 BOSS 官方页面核对。",
 	};

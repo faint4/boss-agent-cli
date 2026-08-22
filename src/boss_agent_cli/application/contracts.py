@@ -147,6 +147,12 @@ class PrepareJobGreetingCommand:
 
 
 @dataclass(frozen=True)
+class PrepareRecruitingReplyCommand:
+	reference: str
+	message: str
+
+
+@dataclass(frozen=True)
 class ConfirmWriteIntentCommand:
 	intent_id: str
 
@@ -267,6 +273,8 @@ class WriteIntentSummary:
 	target_reference: str
 	expires_at: datetime
 	target_label: str = ""
+	context_label: str = ""
+	destination_label: str = ""
 	action: str = ""
 	payload_preview: str = ""
 	warnings: tuple[str, ...] = ()

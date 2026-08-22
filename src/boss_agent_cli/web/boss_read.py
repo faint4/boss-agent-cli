@@ -35,6 +35,42 @@ class CredentialProvider(Protocol):
 ReadTransport = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 WriteTransport = Callable[[str, dict[str, Any], dict[str, Any]], dict[str, Any]]
 RecruitingTransport = Callable[[str, str, dict[str, Any], dict[str, Any]], dict[str, Any]]
+RecruitingWriteTransport = Callable[[int, str, dict[str, Any]], dict[str, Any]]
+
+
+def _cdp_recruiting_reply(friend_id: int, message: str, credential: dict[str, Any]) -> dict[str, Any]:
+	"""Execute one recruiter reply through the existing verified CDP chat path.
+
+	The send path talks directly to the official recruiter chat tab and never uses
+	the legacy Browser Bridge. Any exception after entering the send path is treated
+	as ambiguous by the caller and is never retried automatically.
+	"""
+
+	from boss_agent_cli.api.browser_client import RecruiterChatTabRequired
+	from boss_agent_cli.api.recruiter_client import BossRecruiterClient, RecruiterAuthError
+
+	class CredentialAuth:
+		_logger = None
+
+		def get_token(self) -> dict[str, Any]:
+			return dict(credential)
+
+		def force_refresh(self, *, cdp_url: str | None = None) -> None:
+			raise RecruiterAuthError("Web Platform Session must be reconnected explicitly")
+
+	cdp_value = credential.get("cdp_url")
+	cdp_url = str(cdp_value) if cdp_value else None
+	try:
+		with BossRecruiterClient(CredentialAuth(), delay=(0, 0), cdp_url=cdp_url) as client:  # type: ignore[arg-type]
+			return client.send_message_by_friend(friend_id, message)
+	except RecruiterAuthError as exc:
+		raise BossAdapterFailure(ErrorCode.AUTHENTICATION_EXPIRED) from exc
+	except RecruiterChatTabRequired as exc:
+		raise BossAdapterFailure(ErrorCode.ADAPTER_UNAVAILABLE) from exc
+	except BossAdapterFailure:
+		raise
+	except Exception as exc:
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME) from exc
 
 
 def _http_read(url: str, params: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
@@ -169,11 +205,13 @@ class BossReadAdapter:
 		transport: ReadTransport = _http_read,
 		write_transport: WriteTransport = _http_write,
 		recruiting_transport: RecruitingTransport = _http_recruiting,
+		recruiting_write_transport: RecruitingWriteTransport = _cdp_recruiting_reply,
 	) -> None:
 		self._sessions = sessions
 		self._transport = transport
 		self._write_transport = write_transport
 		self._recruiting_transport = recruiting_transport
+		self._recruiting_write_transport = recruiting_write_transport
 		self._security_ids: dict[str, str] = {}
 		self._prospect_refs: dict[str, dict[str, Any]] = {}
 
@@ -406,6 +444,31 @@ class BossReadAdapter:
 			),
 			contact_details=self._contact_details(resume),
 		)
+
+	def send_recruiting_reply(self, reference: str, message: str) -> None:
+		identifiers = self._prospect_refs.get(reference)
+		if identifiers is None:
+			raise BossAdapterFailure(ErrorCode.UNSUPPORTED_CAPABILITY)
+		try:
+			response = self._recruiting_write_transport(
+				int(identifiers["friend_id"]),
+				message,
+				self._credential_for(WorkspaceKind.RECRUITING),
+			)
+		except BossAdapterFailure:
+			raise
+		except Exception as exc:
+			raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME) from exc
+		code = response.get("code")
+		if code in {recruiter_ep.CODE_SUCCESS, 200}:
+			return
+		if code == recruiter_ep.CODE_STOKEN_EXPIRED:
+			raise BossAdapterFailure(ErrorCode.AUTHENTICATION_EXPIRED)
+		if code == recruiter_ep.CODE_RATE_LIMITED:
+			raise BossAdapterFailure(ErrorCode.RATE_LIMITED)
+		if code == recruiter_ep.CODE_ACCOUNT_RISK:
+			raise BossAdapterFailure(ErrorCode.PLATFORM_RISK_CONTROL)
+		raise BossAdapterFailure(ErrorCode.UNCERTAIN_REMOTE_OUTCOME)
 
 	def _current_applicants(self) -> tuple[InboundApplicant, ...]:
 		return tuple(

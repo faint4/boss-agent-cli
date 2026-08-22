@@ -34,6 +34,7 @@ from boss_agent_cli.application.contracts import (
 	LogoutPlatformSessionCommand,
 	PlatformSessionState,
 	PrepareJobGreetingCommand,
+	PrepareRecruitingReplyCommand,
 	RequestContext,
 	RecruitingApplicantBatch,
 	RecruitingOpening,
@@ -93,6 +94,7 @@ class BossAdapter(Protocol):
 	) -> Iterable[JobSearchBatch]: ...
 	def job_detail(self, reference: str) -> JobSourceDetail: ...
 	def send_greeting(self, reference: str, message: str) -> None: ...
+	def send_recruiting_reply(self, reference: str, message: str) -> None: ...
 	def list_openings(self) -> tuple[RecruitingOpening, ...]: ...
 	def inbound_applicants(
 		self,
@@ -112,6 +114,7 @@ class _WriteIntent:
 	summary: WriteIntentSummary
 	message: str
 	session_revision: str
+	operation: str
 
 
 _RECOVERY_ACTIONS = {
@@ -173,6 +176,8 @@ class Application:
 					outcome_message=message,
 				),
 			)
+			if self._write_intent.summary.workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 
 	def _active_workspace(self, context: RequestContext) -> WorkspaceKind:
 		try:
@@ -299,6 +304,7 @@ class Application:
 			| InspectJobCommand
 			| SetShortlistedCommand
 			| PrepareJobGreetingCommand
+			| PrepareRecruitingReplyCommand
 			| ConfirmWriteIntentCommand
 			| CancelWriteIntentCommand
 			| LoadRecruitingOpeningsCommand
@@ -380,6 +386,8 @@ class Application:
 			return self._set_shortlisted(command, workspace, context)
 		if isinstance(command, PrepareJobGreetingCommand):
 			return self._prepare_job_greeting(command, workspace, context)
+		if isinstance(command, PrepareRecruitingReplyCommand):
+			return self._prepare_recruiting_reply(command, workspace, context)
 		if isinstance(command, ConfirmWriteIntentCommand):
 			return self._confirm_write_intent(command, workspace, context)
 		if isinstance(command, CancelWriteIntentCommand):
@@ -451,6 +459,10 @@ class Application:
 				recoverable=True,
 				recovery_action="Load recruiting openings first",
 			)
+		with self._lock:
+			current = self._workspace_store.load_recruiting_opening()
+			if current is not None and current.reference != opening.reference:
+				self._invalidate_write_intent("招聘职位已改变，本次确认已取消。")
 		self._workspace_store.save_recruiting_opening(opening)
 		self._clear_recruiting_sensitive()
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=opening.reference)
@@ -573,6 +585,13 @@ class Application:
 				recoverable=True,
 				recovery_action="Load Inbound Applicants first",
 			)
+		with self._lock:
+			if (
+				self._write_intent is not None
+				and self._write_intent.summary.workspace is WorkspaceKind.RECRUITING
+				and self._write_intent.summary.target_reference != command.reference
+			):
+				self._invalidate_write_intent("招聘对象已改变，本次确认已取消。")
 		try:
 			prospect = self._boss.prospect_context(opening.reference, command.reference)
 		except BossAdapterFailure as failure:
@@ -808,6 +827,68 @@ class Application:
 				summary=summary,
 				message=message,
 				session_revision=self._session_revision(workspace),
+				operation="job-greeting",
+			)
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=summary.intent_id)
+
+	def _prepare_recruiting_reply(
+		self,
+		command: PrepareRecruitingReplyCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		self._require_recruiting_workspace(workspace, context)
+		self._require_connected(workspace, context)
+		message = command.message.strip()
+		if not message or len(message) > 1000:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Recruiting reply must contain between 1 and 1000 characters",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Review the recruiting reply text",
+			)
+		with self._lock:
+			selected = self._selected_prospect
+			opening = self._workspace_store.load_recruiting_opening()
+			if selected is None or selected.prospect.reference != command.reference or opening is None:
+				raise DomainError(
+					code=ErrorCode.INVALID_COMMAND,
+					message="Only the currently inspected Recruiting Prospect can receive a reply",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Inspect the Recruiting Prospect before preparing a reply",
+				)
+			if self._write_intent is not None and self._write_intent.summary.state in {
+				WriteIntentState.PENDING,
+				WriteIntentState.EXECUTING,
+			}:
+				raise DomainError(
+					code=ErrorCode.INVALID_TRANSITION,
+					message="Resolve the active write confirmation before preparing another",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Confirm or cancel the active write confirmation",
+				)
+			summary = WriteIntentSummary(
+				intent_id=self._intent_id_factory(),
+				workspace=workspace,
+				target_reference=selected.prospect.reference,
+				target_label=selected.prospect.display_name,
+				context_label=opening.title,
+				destination_label="BOSS 招聘沟通会话",
+				action="回复 BOSS 招聘沟通",
+				payload_preview=message,
+				warnings=("确认后将立即向这一位招聘对象回复一次，且不会自动重试。",),
+				expires_at=self._clock() + timedelta(minutes=5),
+				state=WriteIntentState.PENDING,
+			)
+			self._write_intent = _WriteIntent(
+				summary=summary,
+				message=message,
+				session_revision=self._session_revision(workspace),
+				operation="recruiting-reply",
 			)
 			self._last_error = None
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=summary.intent_id)
@@ -897,7 +978,10 @@ class Application:
 				summary=replace(intent.summary, state=WriteIntentState.EXECUTING),
 			)
 		try:
-			self._boss.send_greeting(intent.summary.target_reference, intent.message)
+			if intent.operation == "recruiting-reply":
+				self._boss.send_recruiting_reply(intent.summary.target_reference, intent.message)
+			else:
+				self._boss.send_greeting(intent.summary.target_reference, intent.message)
 		except BossAdapterFailure as failure:
 			return self._record_write_failure(intent, failure, context)
 		except (OSError, RuntimeError) as failure:
@@ -912,10 +996,14 @@ class Application:
 				summary=replace(
 					intent.summary,
 					state=WriteIntentState.SUCCEEDED,
-					outcome_message="招呼已发送。",
+					outcome_message=(
+						"回复已发送。" if intent.operation == "recruiting-reply" else "招呼已发送。"
+					),
 				),
 			)
 			self._last_error = None
+			if intent.summary.workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=intent.summary.intent_id)
 
 	def _record_write_failure(
@@ -959,6 +1047,8 @@ class Application:
 				),
 				correlation_id=context.correlation_id,
 			)
+			if intent.summary.workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 		raise self._write_error(
 			code=code,
 			context=context,
@@ -989,6 +1079,8 @@ class Application:
 					outcome_message="已取消，没有执行平台写入。",
 				),
 			)
+			if intent.summary.workspace is WorkspaceKind.RECRUITING:
+				self._clear_recruiting_sensitive()
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=intent.summary.intent_id)
 
 	@staticmethod

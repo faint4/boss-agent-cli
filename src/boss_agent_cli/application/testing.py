@@ -118,6 +118,8 @@ class FakeBossAdapter:
 		batch_gate: threading.Event | None = None,
 		greeting_failure: ErrorCode | None = None,
 		greeting_gate: threading.Event | None = None,
+		recruiting_reply_failure: ErrorCode | None = None,
+		recruiting_reply_gate: threading.Event | None = None,
 		openings: tuple[RecruitingOpening, ...] = (),
 		applicant_batches: tuple[RecruitingApplicantBatch, ...] = (),
 		prospect_contexts: dict[str, RecruitingProspectContext] | None = None,
@@ -132,6 +134,8 @@ class FakeBossAdapter:
 		self.batch_gate = batch_gate
 		self.greeting_failure = greeting_failure
 		self.greeting_gate = greeting_gate
+		self.recruiting_reply_failure = recruiting_reply_failure
+		self.recruiting_reply_gate = recruiting_reply_gate
 		self.openings = openings
 		self.applicant_batches = applicant_batches
 		self.prospect_contexts = dict(prospect_contexts or {})
@@ -141,6 +145,7 @@ class FakeBossAdapter:
 		self.opening_calls = 0
 		self.applicant_calls: list[str] = []
 		self.prospect_context_calls: list[str] = []
+		self.recruiting_reply_calls: list[tuple[str, str]] = []
 
 	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		self.probed_workspaces.append(workspace)
@@ -185,6 +190,13 @@ class FakeBossAdapter:
 			self.greeting_gate.wait(timeout=2)
 		if self.greeting_failure is not None:
 			raise BossAdapterFailure(self.greeting_failure)
+
+	def send_recruiting_reply(self, reference: str, message: str) -> None:
+		self.recruiting_reply_calls.append((reference, message))
+		if self.recruiting_reply_gate is not None:
+			self.recruiting_reply_gate.wait(timeout=2)
+		if self.recruiting_reply_failure is not None:
+			raise BossAdapterFailure(self.recruiting_reply_failure)
 
 	def list_openings(self) -> tuple[RecruitingOpening, ...]:
 		self.opening_calls += 1

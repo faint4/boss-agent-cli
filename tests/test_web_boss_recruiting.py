@@ -94,6 +94,72 @@ def test_recruiting_adapter_maps_platform_stop_codes(platform_code: int, expecte
 	assert raised.value.code is expected
 
 
+def test_recruiting_reply_uses_server_owned_friend_id_and_executes_transport_once() -> None:
+	writes: list[tuple[int, str]] = []
+
+	def read_transport(method: str, url: str, payload: dict[str, Any], credential: dict[str, Any]):
+		return {
+			"code": 0,
+			"zpData": {
+				"friendList": [
+					{
+						"friendId": 98765,
+						"name": "招聘对象甲",
+						"encryptUid": "enc-geek-secret",
+						"securityId": "security-secret",
+					}
+				]
+			},
+		}
+
+	def write_transport(friend_id: int, message: str, credential: dict[str, Any]):
+		writes.append((friend_id, message))
+		return {"code": 0, "message": "Success"}
+
+	adapter = BossReadAdapter(
+		_Sessions(), recruiting_transport=read_transport, recruiting_write_transport=write_transport
+	)
+	prospect = tuple(adapter.inbound_applicants("opening-1", cancel_requested=lambda: False))[0].items[0]
+
+	adapter.send_recruiting_reply(prospect.reference, "仅发送一次")
+
+	assert writes == [(98765, "仅发送一次")]
+	assert "98765" not in repr(prospect)
+
+
+@pytest.mark.parametrize(
+	("platform_code", "expected"),
+	[
+		(37, ErrorCode.AUTHENTICATION_EXPIRED),
+		(9, ErrorCode.RATE_LIMITED),
+		(36, ErrorCode.PLATFORM_RISK_CONTROL),
+		(-1, ErrorCode.UNCERTAIN_REMOTE_OUTCOME),
+	],
+)
+def test_recruiting_reply_failure_is_typed_and_never_retried(platform_code: int, expected: ErrorCode) -> None:
+	writes = 0
+
+	def read_transport(method: str, url: str, payload: dict[str, Any], credential: dict[str, Any]):
+		return {"code": 0, "zpData": {"friendList": [{"friendId": 98765, "encryptUid": "geek-1"}]}}
+
+	def write_transport(friend_id: int, message: str, credential: dict[str, Any]):
+		nonlocal writes
+		writes += 1
+		return {"code": platform_code, "message": "sensitive platform response must not escape"}
+
+	adapter = BossReadAdapter(
+		_Sessions(), recruiting_transport=read_transport, recruiting_write_transport=write_transport
+	)
+	prospect = tuple(adapter.inbound_applicants("opening-1", cancel_requested=lambda: False))[0].items[0]
+
+	with pytest.raises(BossAdapterFailure) as raised:
+		adapter.send_recruiting_reply(prospect.reference, "仅发送一次")
+
+	assert raised.value.code is expected
+	assert "sensitive platform response" not in str(raised.value)
+	assert writes == 1
+
+
 @pytest.mark.parametrize(
 	("status_code", "expected"),
 	[(401, ErrorCode.AUTHENTICATION_EXPIRED), (403, ErrorCode.AUTHENTICATION_EXPIRED), (429, ErrorCode.RATE_LIMITED)],
