@@ -48,8 +48,8 @@ Historical `operating_mode=assisted|research` configuration remains compatible, 
 - **Terminal wizard**: run `boss` or `boss wizard`, select a role, platform, and goal, then resume the same workflow through JSON, run IDs, or MCP
 - **Local shortlist & stats**: inspect details, sync web favorited jobs, organize candidates with local tags and notes, compare jobs offline, and see funnel stats — `shortlist` `stats` `watch` `preset` `favorites`
 - **AI job-hunting assist + local models**: JD analysis, resume polish, role-targeted optimization, keyword suggestions, resume optimization, shortlist fit reports, interview prep, chat coaching; local weights stay outside the Python package via Ollama/vLLM OpenAI-compatible endpoints — `ai analyze-jd` `ai suggest-keywords` `ai resume-optimize` `ai interview-prep` `ai chat-coach` `ai local configure` `ai local smoke`
-- **Schema-first + JSON envelope**: stdout is a JSON-only `{ok, data, pagination, error, hints}` envelope, `boss schema` is the capability source of truth, and an **MCP server with 74 tools** exposes every implemented capability
-- **Recruiter workflow**: candidate search, applications, resumes, chat/recent messages, replies, contact/attachment requests, and job management — `hr candidates/applications/resume/chat/last-messages/reply/request-resume/jobs`
+- **Schema-first + JSON envelope**: stdout is a JSON-only `{ok, data, pagination, error, hints}` envelope, `boss schema` is the capability source of truth, and an **MCP server with 75 tools** exposes every implemented capability
+- **Recruiter workflow**: the shared `hr journey` contract matches the local Web journey and requires prepare/confirm for one reply; legacy candidate search, applications, resume, chat, and job-management commands remain available
 - **Cross-platform layer**: live `Platform` / `RecruiterPlatform` registries, `--platform zhipin|zhilian|qiancheng`
 
 ## 🚀 Quickstart
@@ -75,6 +75,7 @@ boss stats                                                    # local stats
 # Recruiter mode
 boss hr candidates "Python" --city 101010100
 boss hr jobs list
+boss hr journey --input-json '{"action":"run","steps":[{"action":"openings"},{"action":"select-opening","reference":"$first"},{"action":"applicants"},{"action":"inspect","reference":"$first"},{"action":"prepare-reply","reference":"$first","message":"Thanks for applying"},{"action":"confirm","intent_id":"$pending"}]}'
 ```
 
 Every command outputs structured JSON (`ok` for success, `exit 0/1`). Full walk-through: [Getting Started](docs/getting-started.en.md).
@@ -99,7 +100,7 @@ boss config set platform zhilian          # set as default
 Start here: [Agent Quickstart](docs/agent-quickstart.en.md) · [Capability Matrix](docs/capability-matrix.en.md) · [Host Examples](docs/agent-hosts.en.md)
 
 ```json
-// Option 1: MCP (recommended) — Claude Desktop / Cursor and other MCP hosts; MCP server with 74 tools
+// Option 1: MCP (recommended) — Claude Desktop / Cursor and other MCP hosts; MCP server with 75 tools
 { "mcpServers": { "boss-agent": { "command": "uvx", "args": ["--from", "boss-agent-cli[mcp]", "boss-mcp"] } } }
 ```
 
@@ -140,7 +141,7 @@ with BossClient(AuthManager(...)) as client:
 - **Resume / AI**: `resume` · `me` · `ai analyze-jd` · `ai polish` · `ai optimize` · `ai fit` · `ai suggest-keywords` · `ai resume-optimize` · `ai cover-letter` · `ai interview-prep` · `ai chat-coach` · `ai local`
 - **Utility / workflow**: `wizard` · `job` · `schema` · `platforms` · `export` · `config` · `clean`
 - **Candidate actions**: `greet` · `batch-greet` · `apply` · `exchange` · `chat*` · `pipeline` · `digest`
-- **Recruiter**: `hr applications/candidates/resume/chat/chatmsg/last-messages/reply/request-resume/jobs`
+- **Recruiter**: `hr journey` (shared Web/CLI/MCP contract with explicit confirmation) · legacy `hr applications/candidates/resume/chat/chatmsg/last-messages/reply/request-resume/jobs`
 
 Full command tables, parameters, and welfare-matching internals: **[Command Reference](docs/commands.en.md)**. The capability source of truth is `boss schema` (with `--format openai-tools` / `anthropic-tools` exports).
 

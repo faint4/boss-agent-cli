@@ -49,7 +49,7 @@ Add the server in Cursor Settings -> MCP Servers:
 
 ## Available tools
 
-The current MCP server exposes **74 implemented tools**.
+The current MCP server exposes **75 implemented tools**.
 
 ### Shared workflow
 
@@ -125,11 +125,14 @@ Fine-grained crawl tools read or import existing tasks; `boss_wizard` goals `cra
 
 | Tool | Description |
 |------|-------------|
+| `boss_hr_journey` | Shared Web/CLI/MCP Recruiting journey; reads applicant context transiently and requires `prepare-reply` followed by one `confirm` or `cancel-write` |
 | `boss_hr_jobs` | Manage job listings and online/offline state |
 | `boss_hr_jobs_detail` | View recruiter-side job details |
 | `boss_hr_applications` / `boss_hr_candidates` | Applications and candidate search |
 | `boss_hr_resume` / `boss_hr_exchange` / `boss_hr_request_resume` | Online resumes, contact exchange, and attached-resume requests |
 | `boss_hr_chat` / `boss_hr_chatmsg` / `boss_hr_last_messages` / `boss_hr_reply` | Recruiter conversation reads and replies |
+
+For new automation, prefer `boss_hr_journey`. `boss_hr_reply` remains a compatibility tool and sends immediately; migrate write flows to `prepare-reply` and confirm only the returned `intent_id`. The shared adapter never persists resume, chat, contact, or reply content.
 
 Every implemented tool is exposed. `ACCOUNT_RISK`, `AUTH_REQUIRED`, `RATE_LIMITED`, and `NOT_SUPPORTED` still use the standard JSON error envelope; agents should follow `error.recovery_action`.
 

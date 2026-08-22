@@ -35,6 +35,9 @@ def _build_args(tool_name: str, arguments: dict[str, Any]) -> list[str]:
 	if name == "job":
 		return ["job", "--input-json", json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))]
 
+	if name == "hr_journey":
+		return ["hr", "journey", "--input-json", json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))]
+
 	if name == "search":
 		args = [name, arguments["query"]]
 		for opt in ("city", "salary", "experience", "education", "welfare"):

@@ -133,8 +133,11 @@ After every page, `<data-dir>/crawl/runs/<run_id>/jobs.json`, `jobs.csv`, and a 
 
 | Command | Description |
 |---------|-------------|
+| `boss hr journey --input-json <JSON>` | Shared Web/CLI/MCP Recruiting journey; reads applicant context on demand and requires `prepare-reply` followed by a single confirmation of the server-owned `intent_id`, or cancellation |
 | `boss hr jobs list/offline/online/detail` | Job listing, detail, and lifecycle management |
 | `boss hr applications` / `hr resume` / `hr chat` / `hr chatmsg` / `hr last-messages` / `hr candidates` / `hr reply` / `hr request-resume` | Candidate applications, resumes, conversations, search, replies, and attached-resume requests |
+
+Migration: `boss hr reply` remains for compatibility and sends immediately. New automation should use `boss hr journey`. Resume, chat, contact, and draft-reply content stays in process memory only and is cleared on exit, cancellation, recovery, or context changes.
 
 ## Resume & AI
 

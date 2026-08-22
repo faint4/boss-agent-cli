@@ -191,6 +191,38 @@ TOOLS = [
 		},
 	),
 	Tool(
+		name="boss_hr_journey",
+		description=(
+			"通过与本地 Web 相同的应用合同运行招聘主流程；读取候选人上下文后，"
+			"回复必须先 prepare-reply 再 confirm，MCP 进程仅在内存中保留敏感上下文"
+		),
+		inputSchema={
+			"type": "object",
+			"properties": {
+				"action": {
+					"type": "string",
+					"enum": [
+						"state", "openings", "select-opening", "applicants", "cancel-applicants",
+						"inspect", "prepare-reply", "confirm", "cancel-write", "run",
+					],
+					"default": "state",
+					"description": "共享 Recruiting action",
+				},
+				"reference": {"type": "string", "description": "职位或 Inbound Applicant 引用；可用 $first"},
+				"message": {"type": "string", "description": "待人工确认的单条回复文本"},
+				"intent_id": {"type": "string", "description": "服务端生成的写入意图 ID；可用 $pending"},
+				"run_id": {"type": "string", "description": "要取消的读取 run ID"},
+				"timeout": {"type": "number", "description": "等待 applicants 读取完成的秒数"},
+				"steps": {
+					"type": "array",
+					"items": {"type": "object"},
+					"description": "action=run 时按顺序执行的非 run action 数组",
+				},
+			},
+			"required": [],
+		},
+	),
+	Tool(
 		name="boss_status",
 		description="检查 BOSS 直聘登录态",
 		inputSchema={"type": "object", "properties": {}, "required": []},

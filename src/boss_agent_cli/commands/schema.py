@@ -1066,10 +1066,11 @@ SCHEMA_DATA = {
 			},
 		},
 		"hr": {
-			"description": "招聘者模式快捷命令。已实现的候选人搜索、简历、沟通、联系方式交换和消息发送在 assisted/research 下均可调用。",
+			"description": "招聘者模式快捷命令。journey 使用与本地 Web 相同的共享应用合同和显式写入确认；旧命令保持兼容。",
 			"args": [],
 			"options": {},
 			"subcommands": {
+				"journey": "共享招聘主流程（openings → applicants → inspect → prepare-reply → confirm/cancel）",
 				"applications": "查看候选人投递申请列表",
 				"resume": "查看候选人在线简历或发起联系方式交换",
 				"chat": "查看与候选人的沟通列表（含未读数和最近消息摘要）",

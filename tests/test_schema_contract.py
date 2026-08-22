@@ -201,3 +201,4 @@ def test_schema_exposes_recruiter_chat_context_commands():
 	subcommands = SCHEMA_DATA["commands"]["hr"]["subcommands"]
 	assert "chatmsg" in subcommands
 	assert "last-messages" in subcommands
+	assert "journey" in subcommands

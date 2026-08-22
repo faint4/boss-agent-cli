@@ -131,6 +131,7 @@ boss crawl stop <run_id>
 
 | 命令 | 说明 |
 |------|------|
+| `boss hr journey --input-json <JSON>` | Web/CLI/MCP 共享招聘主流程；读取职位与投递、按需查看候选人上下文，回复必须先 `prepare-reply` 再以服务端 `intent_id` 单次确认或取消 |
 | `boss hr applications` | 查看候选人投递申请 |
 | `boss hr resume <geek_id> --job-id <id> --security-id <id>` | 查看候选人在线简历 |
 | `boss hr resume --exchange --friend-id <friend_id> [--type wechat]` | 请求交换手机号或微信 |
@@ -141,6 +142,8 @@ boss crawl stop <run_id>
 | `boss hr candidates <keyword>` | 搜索和筛选候选人 |
 | `boss hr reply <friend_id> <message>` | 回复候选人消息 |
 | `boss hr request-resume <friend_id>` | 请求候选人分享附件简历 |
+
+迁移说明：`boss hr reply` 为兼容旧脚本保留，仍会立即发送。新脚本应改用 `boss hr journey`；敏感简历、聊天、联系方式和待发文本只在当前进程内存中保留，退出、取消、恢复或上下文切换会清除，不由 surface adapter 持久化。
 
 ## 简历与 AI
 

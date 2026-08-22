@@ -96,6 +96,7 @@
 
 | 能力 | CLI 命令 | 需要登录 | 通道 |
 |---|---|---|---|
+| 共享招聘主流程与单次回复确认 | `boss hr journey --input-json <JSON>` | 是 | Web 同款 Application 合同；敏感内容仅驻留内存 |
 | 投递申请列表 | `boss hr applications` | 是 | 招聘者平台适配器 |
 | 候选人搜索 | `boss hr candidates` | 是 | 招聘者平台适配器 |
 | 沟通列表 | `boss hr chat` | 是 | 招聘者平台适配器 |
@@ -103,7 +104,7 @@
 | 最近消息摘要 | `boss hr last-messages [--friend-id <id>]` | 是 | 招聘者平台适配器 |
 | 在线简历查看 | `boss hr resume <geek_id> --job-id <id> --security-id <id>` | 是 | 招聘者平台适配器 |
 | 联系方式交换 | `boss hr resume --exchange --friend-id <friend_id> [--type wechat]` | 是 | 招聘者平台适配器 |
-| 消息回复 | `boss hr reply <friend_id> <message>` | 是 | 招聘者平台适配器 |
+| 消息回复（兼容直写） | `boss hr reply <friend_id> <message>` | 是 | 招聘者平台适配器；新自动化迁移到 `hr journey` |
 | 附件简历请求 | `boss hr request-resume <friend_id>` | 是 | 招聘者平台适配器 |
 | 职位列表与上下线 | `boss hr jobs` | 是 | httpx |
 
@@ -112,4 +113,4 @@
 - 若以 CLI 直连为主，优先通过 `boss schema` 进行能力发现与参数校验；当前 schema 会同时暴露 `supported_platforms` 与 `supported_recruiter_platforms`。
 - 当前多平台状态：`boss platforms` 返回本地平台注册与能力状态，也可通过 `boss platforms --platform qiancheng` / `--platform 51job` 只查看单个平台或别名；`zhipin` 已覆盖求职者与招聘者实现；`zhilian` 已接通候选者侧链路，招聘者侧通过 `agent` browser/CDP adapter V1 接入；`qiancheng` / 51job 仅为已注册占位适配器，真实工作流统一返回 `NOT_SUPPORTED`。
 - `crawl` 使用独立 Chrome profile、跨进程速率预算、SQLite 断点和 `crawl stop` kill switch。细粒度 MCP crawl tools 提供已有 run 的 `crawl_status/results/shortlist` 本地操作，`boss_wizard` 可启动、恢复和停止共享 workflow。默认 Hook 为 `none`；本地 Hook 目录必须提供 `SHA256SUMS`。风险码、安全页或预算耗尽会停止并返回恢复命令。
-- 以 `boss schema` 为准：当前暴露 40 个顶层命令；其中 `hr` 下还有 9 个一级招聘者子命令，`ai` / `resume` 为命令组入口。
+- 以 `boss schema` 为准：当前暴露 40 个顶层命令；其中 `hr` 下还有 10 个一级招聘者子命令，`ai` / `resume` 为命令组入口。
