@@ -1,0 +1,1417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Task Flow State Prototype</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:1rem;background:inherit}iframe{display:block;width:100%;height:calc(100vh - 2rem);margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="Task Flow State Prototype" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;Task Flow State Prototype&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(
+    --background,
+    var(--color-background-primary, light-dark(rgb(255 255 255), rgb(24 24 24)))
+  ) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: var(
+    --color-background-primary,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --card: color-mix(in oklab, var(--foreground) 5%, var(--background));
+  --card-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --popover: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255), rgb(45 45 45))
+  );
+  --popover-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --primary: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --primary-foreground: var(
+    --color-text-inverse,
+    light-dark(rgb(255 255 255), rgb(13 13 13))
+  );
+  --secondary: var(
+    --color-background-secondary,
+    light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%))
+  );
+  --secondary-foreground: var(
+    --color-text-primary,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: var(
+    --color-text-secondary,
+    light-dark(rgb(26 28 31 / 49.4%), rgb(255 255 255 / 49.8%))
+  );
+  --accent: var(
+    --color-background-info,
+    light-dark(rgb(229 242 255), rgb(13 39 63))
+  );
+  --accent-foreground: var(
+    --color-text-info,
+    light-dark(rgb(51 156 255), rgb(131 195 255))
+  );
+  --destructive: var(
+    --color-text-warning,
+    light-dark(rgb(226 85 7), rgb(255 133 73))
+  );
+  --border: var(
+    --color-border-secondary,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+  --input: var(
+    --color-border-primary,
+    light-dark(
+      rgb(26 28 31 / 11.8%),
+      color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+    )
+  );
+  --ring: var(
+    --color-ring-primary,
+    light-dark(rgb(51 156 255), rgb(131 195 255 / 76%))
+  );
+  --font-size-base: var(--font-text-md-size, 14px);
+  --blue: light-dark(rgb(51 156 255), rgb(51 156 255));
+  --orange: light-dark(rgb(226 85 7), rgb(251 106 34));
+  --green: light-dark(rgb(0 162 64), rgb(64 201 119));
+  --red: light-dark(rgb(224 46 42), rgb(255 103 100));
+  --purple: light-dark(rgb(146 79 247), rgb(173 123 249));
+  --yellow: light-dark(rgb(255 195 0), rgb(255 210 64));
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: var(--border-radius-lg, 12.5px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  /* Preserve MCP aliases for older inline renderers without creating :root cycles. */
+  --color-background-primary: var(
+    --background,
+    light-dark(rgb(255 255 255), rgb(24 24 24))
+  );
+  --color-text-primary: var(
+    --foreground,
+    light-dark(rgb(26 28 31), rgb(255 255 255))
+  );
+  --color-border-secondary: var(
+    --border,
+    light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%))
+  );
+
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans) !important;
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium, 500);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card, .progress) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress {
+  display: flex;
+  height: 6px;
+  margin-block: calc((var(--line-height-normal, 1.5em) - 6px) / 2);
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+}
+
+.progress-bar {
+  height: 100%;
+  flex-shrink: 0;
+  border: 0;
+  background: var(--viz-series-1);
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+  [aria-pressed=&quot;true&quot;],
+  [aria-selected=&quot;true&quot;],
+  .is-selected
+) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+/* Model-authored chart rules can otherwise stretch icons after these styles load. */
+svg.lucide {
+  display: block;
+  width: 16px !important;
+  height: 16px !important;
+  flex: none;
+  margin: 0 !important;
+  stroke-width: 1.6;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;task-flow-state-prototype&quot;&gt;
+  &lt;style&gt;
+    #task-flow-state-prototype{--tf-ink:light-dark(#18201d,#edf5f1);--tf-muted:light-dark(#69746f,#a7b1ac);--tf-line:light-dark(#dce4df,#34423b);--tf-paper:light-dark(#f6f8f6,#111612);--tf-panel:light-dark(#ffffff,#19211c);--tf-soft:light-dark(#edf3ef,#232e28);--tf-mint:light-dark(#0b8158,#52dda5);--tf-mint-surface:light-dark(#dff6eb,#153d2c);--tf-amber:light-dark(#a45b13,#ffc179);--tf-red:light-dark(#a73e3e,#ff9e9e);--tf-blue:light-dark(#2869b2,#81b7f3);color-scheme:light dark;color:var(--tf-ink);font-family:Inter,&quot;Segoe UI&quot;,sans-serif;background:var(--tf-paper);border:1px solid var(--tf-line);border-radius:18px;overflow:hidden}
+    #task-flow-state-prototype *{box-sizing:border-box}#task-flow-state-prototype button,#task-flow-state-prototype textarea{font:inherit}#task-flow-state-prototype button{cursor:pointer;color:inherit}#task-flow-state-prototype button:focus-visible,#task-flow-state-prototype textarea:focus-visible{outline:3px solid color-mix(in srgb,var(--tf-mint) 30%,transparent);outline-offset:2px}
+    .tf-head{padding:22px 24px;background:var(--tf-panel);border-bottom:1px solid var(--tf-line)}.tf-head h1{margin:0;font-size:22px;letter-spacing:-.03em}.tf-question{max-width:900px;margin:7px 0 0;color:var(--tf-muted)}
+    .tf-body{padding:18px 20px 76px}.tf-path{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:16px}.tf-path-step{position:relative;padding:9px 8px;text-align:center;color:var(--tf-muted);background:var(--tf-soft);border-radius:8px;font-size:12px}.tf-path-step.done{color:var(--tf-mint);background:var(--tf-mint-surface)}.tf-path-step.current{color:var(--tf-panel);background:var(--tf-ink);font-weight:500}.tf-path-step.recovery{color:var(--tf-red);background:color-mix(in srgb,var(--tf-red) 12%,var(--tf-panel))}
+    .tf-state-grid{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:10px;margin-bottom:16px}.tf-state{background:var(--tf-panel);border:1px solid var(--tf-line);border-radius:12px;padding:13px}.tf-state-label{font-size:12px;color:var(--tf-muted);margin-bottom:5px}.tf-state-value{font-weight:500}.tf-state-detail{font-size:12px;color:var(--tf-muted);margin-top:4px}.tf-state.wide{grid-column:auto}.tf-state-alert{border-color:color-mix(in srgb,var(--tf-red) 40%,var(--tf-line));background:color-mix(in srgb,var(--tf-red) 7%,var(--tf-panel))}.tf-state-ok{border-color:color-mix(in srgb,var(--tf-mint) 38%,var(--tf-line))}
+    .tf-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,.65fr);gap:16px}.tf-section{min-width:0}.tf-section-title{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:15px}.tf-subtitle{margin:18px 0 8px;font-size:12px;color:var(--tf-muted);text-transform:uppercase;letter-spacing:.06em}.tf-actions{display:flex;flex-wrap:wrap;gap:7px}.tf-action{border:1px solid var(--tf-line);background:var(--tf-panel);border-radius:9px;padding:8px 10px}.tf-action:hover{border-color:var(--tf-mint)}.tf-action.primary{background:var(--tf-mint-surface);border-color:color-mix(in srgb,var(--tf-mint) 40%,var(--tf-line));color:var(--tf-mint)}.tf-action.risk{color:var(--tf-red)}.tf-action.system{border-style:dashed;color:var(--tf-amber)}
+    .tf-editor{margin-top:10px}.tf-editor label{display:block;color:var(--tf-muted);font-size:12px;margin-bottom:5px}.tf-editor textarea{width:100%;min-height:68px;padding:9px;border:1px solid var(--tf-line);border-radius:9px;background:var(--tf-panel);color:var(--tf-ink);resize:vertical}.tf-editor-controls{display:flex;justify-content:flex-end;margin-top:6px}
+    .tf-invariants{background:var(--tf-panel);border:1px solid var(--tf-line);border-radius:12px;padding:14px}.tf-rule{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--tf-line);font-size:12px}.tf-rule:last-child{border:0}.tf-rule-mark{color:var(--tf-mint);font-weight:500}.tf-intent{margin-top:12px;padding:12px;border-radius:10px;background:var(--tf-soft)}.tf-intent.empty{color:var(--tf-muted)}.tf-intent dl{display:grid;grid-template-columns:58px 1fr;gap:5px;margin:0;font-size:12px}.tf-intent dt{color:var(--tf-muted)}.tf-intent dd{margin:0;overflow-wrap:anywhere}
+    .tf-walkthrough{margin-top:18px;border-top:1px solid var(--tf-line);padding-top:17px}.tf-tabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}.tf-tab{border:0;background:transparent;border-radius:8px;padding:7px 10px;color:var(--tf-muted)}.tf-tab[aria-selected=&quot;true&quot;]{background:var(--tf-ink);color:var(--tf-panel)}.tf-scenario{background:var(--tf-panel);border:1px solid var(--tf-line);border-radius:12px;padding:14px}.tf-scenario h3{margin:0 0 4px;font-size:15px}.tf-scenario p{margin:0 0 12px;color:var(--tf-muted);font-size:12px}.tf-steps{display:flex;flex-wrap:wrap;gap:6px}.tf-step{border:1px solid var(--tf-line);background:var(--tf-panel);border-radius:9px;padding:7px 9px}.tf-step.done{background:var(--tf-mint-surface);color:var(--tf-mint);border-color:transparent}.tf-step:disabled{cursor:not-allowed;opacity:.45}.tf-step.current{border-color:var(--tf-mint)}
+    .tf-log{margin-top:14px}.tf-log-list{margin:0;padding:0;list-style:none;display:grid;gap:5px;max-height:150px;overflow:auto}.tf-log-item{display:grid;grid-template-columns:58px 90px 1fr;gap:8px;font-size:12px;padding:7px 8px;background:var(--tf-panel);border-radius:7px}.tf-log-item time,.tf-log-action{color:var(--tf-muted)}.tf-log-item.rejected{color:var(--tf-red)}.tf-result{margin-top:10px;padding:9px 11px;border-radius:9px;background:var(--tf-soft);font-size:12px}.tf-result.accepted{color:var(--tf-mint)}.tf-result.rejected{color:var(--tf-red)}
+    @media(max-width:760px){.tf-state-grid{grid-template-columns:1fr 1fr}.tf-state.wide{grid-column:1/-1}.tf-layout{grid-template-columns:1fr}.tf-path{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:460px){#task-flow-state-prototype{border-radius:0}.tf-head{padding:16px}.tf-body{padding:14px 12px 72px}.tf-state-grid{grid-template-columns:1fr}.tf-state.wide{grid-column:auto}.tf-path{grid-template-columns:repeat(2,1fr)}.tf-log-item{grid-template-columns:52px 1fr}.tf-log-item span:last-child{grid-column:1/-1}.tf-actions{display:grid;grid-template-columns:1fr 1fr}.tf-action{padding:8px 5px}.tf-steps{display:grid}.tf-step{text-align:left}}
+  &lt;/style&gt;
+  &lt;header class=&quot;tf-head&quot;&gt;
+    &lt;h1&gt;任务流程与安全确认状态实验&lt;/h1&gt;
+    &lt;p class=&quot;tf-question&quot;&gt;要验证的问题：普通用户能否从界面预测每次操作的影响，并在登录失效、限流、平台风控或结果不确定后安全恢复，同时保证任何未重新确认的平台写入都不会自动发生？&lt;/p&gt;
+  &lt;/header&gt;
+  &lt;div class=&quot;tf-body&quot;&gt;
+    &lt;div class=&quot;tf-path&quot; aria-label=&quot;当前任务路径&quot;&gt;&lt;/div&gt;
+    &lt;section class=&quot;tf-state-grid&quot; aria-live=&quot;polite&quot;&gt;
+      &lt;div class=&quot;tf-state&quot; data-state-workspace&gt;&lt;/div&gt;
+      &lt;div class=&quot;tf-state&quot; data-state-session&gt;&lt;/div&gt;
+      &lt;div class=&quot;tf-state wide&quot; data-state-run&gt;&lt;/div&gt;
+    &lt;/section&gt;
+    &lt;div class=&quot;tf-layout&quot;&gt;
+      &lt;section class=&quot;tf-section&quot;&gt;
+        &lt;h2 class=&quot;tf-section-title&quot;&gt;自由操作 &lt;span class=&quot;tf-state-label&quot;&gt;任意顺序点击；不合法动作会被明确拒绝&lt;/span&gt;&lt;/h2&gt;
+        &lt;div class=&quot;tf-subtitle&quot;&gt;工作区与会话&lt;/div&gt;
+        &lt;div class=&quot;tf-actions&quot;&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;SWITCH_WORKSPACE&quot;&gt;切换工作区&lt;/button&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;CONNECT_REQUEST&quot;&gt;打开 BOSS 登录&lt;/button&gt;
+          &lt;button class=&quot;tf-action system&quot; data-action=&quot;CONNECT_SUCCESS&quot;&gt;模拟登录成功&lt;/button&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;RESUME_RUN&quot;&gt;恢复任务&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;tf-subtitle&quot;&gt;任务与对象&lt;/div&gt;
+        &lt;div class=&quot;tf-actions&quot;&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;START_RUN&quot;&gt;开始任务&lt;/button&gt;
+          &lt;button class=&quot;tf-action system&quot; data-action=&quot;LOAD_RESULTS&quot;&gt;模拟结果载入&lt;/button&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;SELECT_TARGET&quot;&gt;选择当前对象&lt;/button&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;LOCAL_DECISION&quot;&gt;收藏／稍后处理&lt;/button&gt;
+          &lt;button class=&quot;tf-action risk&quot; data-action=&quot;CANCEL_RUN&quot;&gt;取消任务&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;tf-editor&quot;&gt;
+          &lt;label for=&quot;tf-draft&quot;&gt;草稿内容&lt;/label&gt;
+          &lt;textarea id=&quot;tf-draft&quot;&gt;你好，我想进一步了解这个机会，方便沟通一下吗？&lt;/textarea&gt;
+          &lt;div class=&quot;tf-editor-controls&quot;&gt;&lt;button class=&quot;tf-action&quot; data-action=&quot;SAVE_DRAFT&quot;&gt;保存草稿修改&lt;/button&gt;&lt;/div&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;tf-subtitle&quot;&gt;确认门与远端结果&lt;/div&gt;
+        &lt;div class=&quot;tf-actions&quot;&gt;
+          &lt;button class=&quot;tf-action primary&quot; data-action=&quot;PREVIEW_WRITE&quot;&gt;生成单项确认&lt;/button&gt;
+          &lt;button class=&quot;tf-action primary&quot; data-action=&quot;CONFIRM_WRITE&quot;&gt;确认执行&lt;/button&gt;
+          &lt;button class=&quot;tf-action system&quot; data-action=&quot;REMOTE_SUCCESS&quot;&gt;模拟执行成功&lt;/button&gt;
+          &lt;button class=&quot;tf-action system&quot; data-action=&quot;UNCERTAIN_OUTCOME&quot;&gt;模拟结果不确定&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;tf-subtitle&quot;&gt;异常注入&lt;/div&gt;
+        &lt;div class=&quot;tf-actions&quot;&gt;
+          &lt;button class=&quot;tf-action risk&quot; data-action=&quot;SESSION_EXPIRED&quot;&gt;登录失效&lt;/button&gt;
+          &lt;button class=&quot;tf-action risk&quot; data-action=&quot;RATE_LIMIT&quot;&gt;触发限流&lt;/button&gt;
+          &lt;button class=&quot;tf-action risk&quot; data-action=&quot;RISK_CONTROL&quot;&gt;触发平台风控&lt;/button&gt;
+          &lt;button class=&quot;tf-action&quot; data-action=&quot;RESET&quot;&gt;重置实验&lt;/button&gt;
+        &lt;/div&gt;
+        &lt;div class=&quot;tf-result&quot; data-result role=&quot;status&quot;&gt;尚未执行操作。&lt;/div&gt;
+      &lt;/section&gt;
+      &lt;aside class=&quot;tf-section&quot;&gt;
+        &lt;h2 class=&quot;tf-section-title&quot;&gt;必须始终成立&lt;/h2&gt;
+        &lt;div class=&quot;tf-invariants&quot;&gt;
+          &lt;div class=&quot;tf-rule&quot;&gt;&lt;span class=&quot;tf-rule-mark&quot;&gt;✓&lt;/span&gt;&lt;span&gt;一次确认只绑定一个工作区、一个对象和一项写入。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;tf-rule&quot;&gt;&lt;span class=&quot;tf-rule-mark&quot;&gt;✓&lt;/span&gt;&lt;span&gt;草稿、对象或工作区变化后，旧确认立即失效。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;tf-rule&quot;&gt;&lt;span class=&quot;tf-rule-mark&quot;&gt;✓&lt;/span&gt;&lt;span&gt;异常和取消只保存安全检查点，不保留写入授权。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;tf-rule&quot;&gt;&lt;span class=&quot;tf-rule-mark&quot;&gt;✓&lt;/span&gt;&lt;span&gt;恢复后必须重新获取状态并再次逐项确认。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;tf-rule&quot;&gt;&lt;span class=&quot;tf-rule-mark&quot;&gt;✓&lt;/span&gt;&lt;span&gt;招聘简历与聊天在切换、取消或异常后从内存清除。&lt;/span&gt;&lt;/div&gt;
+          &lt;div class=&quot;tf-intent empty&quot; data-intent&gt;当前没有待确认写入。&lt;/div&gt;
+        &lt;/div&gt;
+      &lt;/aside&gt;
+    &lt;/div&gt;
+    &lt;section class=&quot;tf-walkthrough&quot;&gt;
+      &lt;h2 class=&quot;tf-section-title&quot;&gt;引导场景&lt;/h2&gt;
+      &lt;div class=&quot;tf-tabs&quot; role=&quot;tablist&quot;&gt;&lt;/div&gt;
+      &lt;div class=&quot;tf-scenario&quot; data-scenario&gt;&lt;/div&gt;
+    &lt;/section&gt;
+    &lt;section class=&quot;tf-log&quot;&gt;
+      &lt;h2 class=&quot;tf-section-title&quot;&gt;状态变更记录&lt;/h2&gt;
+      &lt;ol class=&quot;tf-log-list&quot; data-log&gt;&lt;/ol&gt;
+    &lt;/section&gt;
+  &lt;/div&gt;
+  &lt;script&gt;
+    (() =&gt; {
+      const machine = (() =&gt; {
+        const workspaceNames = { seeker: &#x27;求职工作区&#x27;, recruiter: &#x27;招聘工作区&#x27; };
+        const targetNames = { seeker: &#x27;后端开发工程师 · 澄明科技&#x27;, recruiter: &#x27;入站申请人 · 林然&#x27; };
+        const initialState = (workspace = &#x27;seeker&#x27;) =&gt; ({
+          workspace,
+          session: &#x27;disconnected&#x27;,
+          run: &#x27;idle&#x27;,
+          step: &#x27;goal&#x27;,
+          selected: null,
+          localDecision: false,
+          sensitiveLoaded: false,
+          draft: &#x27;&#x27;,
+          intent: null,
+          outcome: null,
+          stopReason: null,
+          checkpoint: null,
+          sequence: 1
+        });
+        const result = (state, accepted, message) =&gt; ({ state: { ...state, lastMessage: message }, accepted, message });
+        const invalidateIntent = state =&gt; state.intent ? { ...state, intent: null } : state;
+        const recover = (state, reason, uncertain = false) =&gt; ({
+          ...state,
+          session: &#x27;recovery&#x27;,
+          run: &#x27;recovery_required&#x27;,
+          step: &#x27;recovery&#x27;,
+          intent: null,
+          sensitiveLoaded: false,
+          outcome: uncertain ? &#x27;uncertain&#x27; : state.outcome,
+          stopReason: reason,
+          checkpoint: { selected: state.selected, localDecision: state.localDecision, draft: state.draft }
+        });
+        function reduce(state, action) {
+          const reject = message =&gt; result(state, false, message);
+          switch (action.type) {
+            case &#x27;RESET&#x27;: return result(initialState(state.workspace), true, &#x27;实验已重置。&#x27;);
+            case &#x27;SWITCH_WORKSPACE&#x27;: {
+              const workspace = state.workspace === &#x27;seeker&#x27; ? &#x27;recruiter&#x27; : &#x27;seeker&#x27;;
+              return result(initialState(workspace), true, `已停止并清理旧工作区，切换到${workspaceNames[workspace]}；需要独立登录。`);
+            }
+            case &#x27;CONNECT_REQUEST&#x27;:
+              if (![&#x27;disconnected&#x27;, &#x27;recovery&#x27;].includes(state.session)) return reject(&#x27;当前会话状态不能重复打开登录。&#x27;);
+              return result({ ...state, session: &#x27;connecting&#x27; }, true, &#x27;已打开官方 BOSS 登录窗口。&#x27;);
+            case &#x27;CONNECT_SUCCESS&#x27;:
+              if (state.session !== &#x27;connecting&#x27;) return reject(&#x27;只有登录窗口已打开时才能完成登录。&#x27;);
+              return result({ ...state, session: &#x27;connected&#x27; }, true, state.run === &#x27;recovery_required&#x27; ? &#x27;会话已恢复；任务仍停在恢复点，不会自动继续。&#x27; : &#x27;当前工作区已连接 BOSS。&#x27;);
+            case &#x27;START_RUN&#x27;:
+              if (state.session !== &#x27;connected&#x27;) return reject(&#x27;请先连接当前工作区的 BOSS 会话。&#x27;);
+              if (![&#x27;idle&#x27;, &#x27;stopped&#x27;, &#x27;completed&#x27;].includes(state.run)) return reject(&#x27;当前已有任务，不能重复开始。&#x27;);
+              return result({ ...state, run: &#x27;running&#x27;, step: &#x27;search&#x27;, selected: null, localDecision: false, sensitiveLoaded: false, draft: &#x27;&#x27;, intent: null, outcome: null, stopReason: null, checkpoint: null }, true, state.workspace === &#x27;seeker&#x27; ? &#x27;开始搜索职位。&#x27; : &#x27;开始读取当前岗位的入站申请人。&#x27;);
+            case &#x27;LOAD_RESULTS&#x27;:
+              if (state.run !== &#x27;running&#x27; || state.step !== &#x27;search&#x27;) return reject(&#x27;只有正在获取结果时才能载入结果。&#x27;);
+              return result({ ...state, run: &#x27;waiting_for_operator&#x27;, step: &#x27;results&#x27; }, true, &#x27;结果已载入，等待你选择一个对象。&#x27;);
+            case &#x27;SELECT_TARGET&#x27;:
+              if (state.run !== &#x27;waiting_for_operator&#x27; || ![&#x27;results&#x27;, &#x27;detail&#x27;, &#x27;recovery&#x27;].includes(state.step)) return reject(&#x27;当前没有可选择的结果。&#x27;);
+              return result({ ...invalidateIntent(state), selected: targetNames[state.workspace], step: &#x27;detail&#x27;, sensitiveLoaded: state.workspace === &#x27;recruiter&#x27; }, true, state.workspace === &#x27;recruiter&#x27; ? &#x27;已按需读取该申请人的简历与聊天，仅保留在内存。&#x27; : &#x27;已打开职位详情。&#x27;);
+            case &#x27;LOCAL_DECISION&#x27;:
+              if (!state.selected) return reject(&#x27;请先选择一个对象。&#x27;);
+              return result({ ...state, localDecision: !state.localDecision }, true, state.workspace === &#x27;seeker&#x27; ? &#x27;Job Shortlist 已更新；这只是本地操作。&#x27; : &#x27;已标记稍后处理；这只是本地操作。&#x27;);
+            case &#x27;SAVE_DRAFT&#x27;:
+              if (!state.selected) return reject(&#x27;请先选择一个对象。&#x27;);
+              if (!action.content.trim()) return reject(&#x27;草稿不能为空。&#x27;);
+              return result({ ...invalidateIntent(state), draft: action.content.trim(), step: &#x27;draft&#x27; }, true, state.intent ? &#x27;草稿已修改，旧确认已立即失效。&#x27; : &#x27;草稿已保存到当前内存状态。&#x27;);
+            case &#x27;PREVIEW_WRITE&#x27;:
+              if (state.session !== &#x27;connected&#x27;) return reject(&#x27;会话未连接，不能生成确认。&#x27;);
+              if (!state.selected) return reject(&#x27;请先选择一个对象。&#x27;);
+              if (!state.draft) return reject(&#x27;请先准备草稿。&#x27;);
+              if (state.run === &#x27;recovery_required&#x27;) return reject(&#x27;任务仍在恢复状态，请先显式恢复并重新获取对象状态。&#x27;);
+              return result({ ...state, run: &#x27;waiting_for_operator&#x27;, step: &#x27;confirmation&#x27;, intent: { id: `WI-${String(state.sequence).padStart(3, &#x27;0&#x27;)}`, workspace: state.workspace, target: state.selected, action: state.workspace === &#x27;seeker&#x27; ? &#x27;打招呼&#x27; : &#x27;回复&#x27;, content: state.draft, status: &#x27;pending&#x27; }, sequence: state.sequence + 1 }, true, &#x27;已从服务端写入意图生成单项确认；尚未执行平台写入。&#x27;);
+            case &#x27;CONFIRM_WRITE&#x27;:
+              if (state.session !== &#x27;connected&#x27;) return reject(&#x27;会话未连接，确认被拒绝。&#x27;);
+              if (!state.intent || state.intent.status !== &#x27;pending&#x27;) return reject(&#x27;没有有效的单项确认，不能执行。&#x27;);
+              return result({ ...state, run: &#x27;running&#x27;, step: &#x27;executing&#x27;, intent: { ...state.intent, status: &#x27;consumed&#x27; }, outcome: &#x27;pending&#x27; }, true, &#x27;确认已消费，正在执行一次精确的平台写入。&#x27;);
+            case &#x27;REMOTE_SUCCESS&#x27;:
+              if (state.run !== &#x27;running&#x27; || state.step !== &#x27;executing&#x27; || state.outcome !== &#x27;pending&#x27;) return reject(&#x27;当前没有等待结果的平台写入。&#x27;);
+              return result({ ...state, run: &#x27;completed&#x27;, step: &#x27;completed&#x27;, outcome: &#x27;success&#x27;, sensitiveLoaded: false }, true, &#x27;平台返回成功；任务完成，敏感内存已清理。&#x27;);
+            case &#x27;UNCERTAIN_OUTCOME&#x27;:
+              if (state.run !== &#x27;running&#x27; || state.step !== &#x27;executing&#x27; || state.outcome !== &#x27;pending&#x27;) return reject(&#x27;只有已发送但尚未确定结果的写入才能进入结果不确定状态。&#x27;);
+              return result(recover(state, &#x27;平台结果不确定：禁止自动重试&#x27;, true), true, &#x27;结果不确定；任务停止并等待人工核对，旧确认已经消费。&#x27;);
+            case &#x27;SESSION_EXPIRED&#x27;:
+              if (state.session === &#x27;disconnected&#x27;) return reject(&#x27;当前没有可失效的会话。&#x27;);
+              return result(recover(state, &#x27;登录已失效&#x27;), true, &#x27;登录失效；任务停止，确认失效，敏感内存已清理。&#x27;);
+            case &#x27;RATE_LIMIT&#x27;:
+              if (![&#x27;running&#x27;, &#x27;waiting_for_operator&#x27;].includes(state.run)) return reject(&#x27;当前没有会触发平台限流的活动任务。&#x27;);
+              return result(recover(state, &#x27;平台限流：等待人工决定何时恢复&#x27;), true, &#x27;检测到限流；不会循环重试。&#x27;);
+            case &#x27;RISK_CONTROL&#x27;:
+              if (![&#x27;running&#x27;, &#x27;waiting_for_operator&#x27;].includes(state.run)) return reject(&#x27;当前没有会触发平台风控的活动任务。&#x27;);
+              return result(recover(state, &#x27;平台风控：需要人工在官方页面处理&#x27;), true, &#x27;检测到平台风控；所有远端操作停止。&#x27;);
+            case &#x27;RESUME_RUN&#x27;:
+              if (state.session !== &#x27;connected&#x27; || state.run !== &#x27;recovery_required&#x27;) return reject(&#x27;只有会话已重新连接且任务处于恢复状态时才能恢复。&#x27;);
+              return result({ ...state, run: &#x27;waiting_for_operator&#x27;, step: state.checkpoint &amp;&amp; state.checkpoint.selected ? &#x27;detail&#x27; : &#x27;results&#x27;, selected: state.checkpoint ? state.checkpoint.selected : null, localDecision: state.checkpoint ? state.checkpoint.localDecision : false, draft: state.checkpoint ? state.checkpoint.draft : &#x27;&#x27;, sensitiveLoaded: false, intent: null, outcome: null, stopReason: null }, true, &#x27;已恢复安全检查点；远端状态需要重新确认，平台写入仍需生成新确认。&#x27;);
+            case &#x27;CANCEL_RUN&#x27;:
+              if ([&#x27;idle&#x27;, &#x27;stopped&#x27;, &#x27;completed&#x27;].includes(state.run)) return reject(&#x27;当前没有可取消的活动任务。&#x27;);
+              return result({ ...state, run: &#x27;stopped&#x27;, step: &#x27;stopped&#x27;, intent: null, sensitiveLoaded: false, outcome: null, stopReason: &#x27;由本地操作者取消&#x27;, checkpoint: { selected: state.selected, localDecision: state.localDecision, draft: state.draft } }, true, &#x27;任务已取消；确认失效，敏感内存已清理。&#x27;);
+            default: return reject(&#x27;未知操作。&#x27;);
+          }
+        }
+        return { initialState, reduce, workspaceNames };
+      })();
+
+      const root = document.getElementById(&#x27;task-flow-state-prototype&#x27;);
+      if (!root) return;
+      const labels = {
+        session: { disconnected: &#x27;未连接&#x27;, connecting: &#x27;等待官方登录&#x27;, connected: &#x27;已连接&#x27;, recovery: &#x27;需要恢复&#x27; },
+        run: { idle: &#x27;尚未开始&#x27;, running: &#x27;运行中&#x27;, waiting_for_operator: &#x27;等待你操作&#x27;, stopping: &#x27;正在停止&#x27;, stopped: &#x27;已停止&#x27;, recovery_required: &#x27;需要人工恢复&#x27;, completed: &#x27;已完成&#x27; },
+        step: { goal: &#x27;目标&#x27;, search: &#x27;获取结果&#x27;, results: &#x27;选择对象&#x27;, detail: &#x27;查看详情&#x27;, draft: &#x27;准备草稿&#x27;, confirmation: &#x27;单项确认&#x27;, executing: &#x27;执行中&#x27;, recovery: &#x27;恢复&#x27;, stopped: &#x27;已停止&#x27;, completed: &#x27;完成&#x27; }
+      };
+      const scenarios = [
+        { id: &#x27;happy&#x27;, name: &#x27;求职正常路径&#x27;, description: &#x27;从连接、搜索到逐项确认。观察收藏是本地动作，打招呼只有确认后才执行。&#x27;, steps: [[&#x27;打开登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;开始任务&#x27;,&#x27;START_RUN&#x27;],[&#x27;载入职位&#x27;,&#x27;LOAD_RESULTS&#x27;],[&#x27;选择职位&#x27;,&#x27;SELECT_TARGET&#x27;],[&#x27;加入收藏&#x27;,&#x27;LOCAL_DECISION&#x27;],[&#x27;保存草稿&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;生成确认&#x27;,&#x27;PREVIEW_WRITE&#x27;],[&#x27;确认执行&#x27;,&#x27;CONFIRM_WRITE&#x27;],[&#x27;平台成功&#x27;,&#x27;REMOTE_SUCCESS&#x27;]] },
+        { id: &#x27;edit&#x27;, name: &#x27;修改后失效&#x27;, description: &#x27;确认页出现后修改草稿。观察旧 Write Intent 立即消失，必须重新生成。&#x27;, steps: [[&#x27;打开登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;开始任务&#x27;,&#x27;START_RUN&#x27;],[&#x27;载入结果&#x27;,&#x27;LOAD_RESULTS&#x27;],[&#x27;选择对象&#x27;,&#x27;SELECT_TARGET&#x27;],[&#x27;保存草稿&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;生成确认&#x27;,&#x27;PREVIEW_WRITE&#x27;],[&#x27;修改草稿&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;尝试旧确认&#x27;,&#x27;CONFIRM_WRITE&#x27;],[&#x27;重新生成&#x27;,&#x27;PREVIEW_WRITE&#x27;]] },
+        { id: &#x27;auth&#x27;, name: &#x27;登录失效恢复&#x27;, description: &#x27;在确认前登录失效。恢复登录不会自动继续，旧确认也不会复活。&#x27;, steps: [[&#x27;打开登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;开始任务&#x27;,&#x27;START_RUN&#x27;],[&#x27;载入结果&#x27;,&#x27;LOAD_RESULTS&#x27;],[&#x27;选择对象&#x27;,&#x27;SELECT_TARGET&#x27;],[&#x27;保存草稿&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;生成确认&#x27;,&#x27;PREVIEW_WRITE&#x27;],[&#x27;登录失效&#x27;,&#x27;SESSION_EXPIRED&#x27;],[&#x27;尝试确认&#x27;,&#x27;CONFIRM_WRITE&#x27;],[&#x27;重新登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;恢复任务&#x27;,&#x27;RESUME_RUN&#x27;],[&#x27;生成新确认&#x27;,&#x27;PREVIEW_WRITE&#x27;]] },
+        { id: &#x27;uncertain&#x27;, name: &#x27;结果不确定&#x27;, description: &#x27;平台写入已经发出但结果未知。观察系统禁止自动重试，必须人工核对。&#x27;, steps: [[&#x27;打开登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;开始任务&#x27;,&#x27;START_RUN&#x27;],[&#x27;载入结果&#x27;,&#x27;LOAD_RESULTS&#x27;],[&#x27;选择对象&#x27;,&#x27;SELECT_TARGET&#x27;],[&#x27;保存草稿&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;生成确认&#x27;,&#x27;PREVIEW_WRITE&#x27;],[&#x27;确认执行&#x27;,&#x27;CONFIRM_WRITE&#x27;],[&#x27;结果不确定&#x27;,&#x27;UNCERTAIN_OUTCOME&#x27;],[&#x27;尝试再次确认&#x27;,&#x27;CONFIRM_WRITE&#x27;]] },
+        { id: &#x27;switch&#x27;, name: &#x27;招聘侧切换清理&#x27;, description: &#x27;切到招聘工作区，读取申请人内容后再切换。观察会话、确认和敏感内存被清理。&#x27;, steps: [[&#x27;切到招聘&#x27;,&#x27;SWITCH_WORKSPACE&#x27;],[&#x27;打开登录&#x27;,&#x27;CONNECT_REQUEST&#x27;],[&#x27;登录成功&#x27;,&#x27;CONNECT_SUCCESS&#x27;],[&#x27;开始任务&#x27;,&#x27;START_RUN&#x27;],[&#x27;载入申请人&#x27;,&#x27;LOAD_RESULTS&#x27;],[&#x27;读取申请人&#x27;,&#x27;SELECT_TARGET&#x27;],[&#x27;保存回复&#x27;,&#x27;SAVE_DRAFT&#x27;],[&#x27;生成确认&#x27;,&#x27;PREVIEW_WRITE&#x27;],[&#x27;切换工作区&#x27;,&#x27;SWITCH_WORKSPACE&#x27;]] }
+      ];
+      let state = machine.initialState();
+      let log = [];
+      let scenarioIndex = 0;
+      let scenarioStep = 0;
+      const draft = root.querySelector(&#x27;#tf-draft&#x27;);
+      const actionPayload = type =&gt; type === &#x27;SAVE_DRAFT&#x27; ? { type, content: draft.value } : { type };
+      function dispatch(type, fromScenario = false) {
+        const previous = state;
+        const outcome = machine.reduce(state, actionPayload(type));
+        state = outcome.state;
+        log.unshift({ time: new Date().toLocaleTimeString(&#x27;zh-CN&#x27;, { hour: &#x27;2-digit&#x27;, minute: &#x27;2-digit&#x27;, second: &#x27;2-digit&#x27; }), action: actionName(type), message: outcome.message, accepted: outcome.accepted });
+        log = log.slice(0, 16);
+        if (fromScenario) scenarioStep += 1;
+        if (type === &#x27;RESET&#x27;) scenarioStep = 0;
+        render(previous, outcome);
+      }
+      function actionName(type) {
+        const names = { SWITCH_WORKSPACE:&#x27;切换工作区&#x27;,CONNECT_REQUEST:&#x27;打开登录&#x27;,CONNECT_SUCCESS:&#x27;登录成功&#x27;,START_RUN:&#x27;开始任务&#x27;,LOAD_RESULTS:&#x27;载入结果&#x27;,SELECT_TARGET:&#x27;选择对象&#x27;,LOCAL_DECISION:&#x27;本地决定&#x27;,SAVE_DRAFT:&#x27;保存草稿&#x27;,PREVIEW_WRITE:&#x27;生成确认&#x27;,CONFIRM_WRITE:&#x27;确认执行&#x27;,REMOTE_SUCCESS:&#x27;执行成功&#x27;,UNCERTAIN_OUTCOME:&#x27;结果不确定&#x27;,SESSION_EXPIRED:&#x27;登录失效&#x27;,RATE_LIMIT:&#x27;平台限流&#x27;,RISK_CONTROL:&#x27;平台风控&#x27;,RESUME_RUN:&#x27;恢复任务&#x27;,CANCEL_RUN:&#x27;取消任务&#x27;,RESET:&#x27;重置&#x27; };
+        return names[type] || type;
+      }
+      function renderPath() {
+        const steps = [&#x27;目标&#x27;,&#x27;获取结果&#x27;,&#x27;选择对象&#x27;,&#x27;准备内容&#x27;,&#x27;单项确认&#x27;,&#x27;结果&#x27;];
+        const order = { goal:0, search:1, results:2, detail:2, draft:3, confirmation:4, executing:5, completed:5 };
+        const current = order[state.step];
+        root.querySelector(&#x27;.tf-path&#x27;).innerHTML = steps.map((name,index) =&gt; `&lt;div class=&quot;tf-path-step ${state.step === &#x27;recovery&#x27; || state.step === &#x27;stopped&#x27; ? &#x27;recovery&#x27; : index === current ? &#x27;current&#x27; : index &lt; current ? &#x27;done&#x27; : &#x27;&#x27;}&quot;&gt;${index + 1}. ${name}&lt;/div&gt;`).join(&#x27;&#x27;);
+      }
+      function renderState() {
+        const workspace = state.workspace === &#x27;seeker&#x27; ? &#x27;求职工作区&#x27; : &#x27;招聘工作区&#x27;;
+        root.querySelector(&#x27;[data-state-workspace]&#x27;).innerHTML = `&lt;div class=&quot;tf-state-label&quot;&gt;活动工作区&lt;/div&gt;&lt;div class=&quot;tf-state-value&quot;&gt;${workspace}&lt;/div&gt;&lt;div class=&quot;tf-state-detail&quot;&gt;${state.selected || &#x27;尚未选择对象&#x27;}${state.sensitiveLoaded ? &#x27; · 敏感内容仅在内存&#x27; : &#x27;&#x27;}&lt;/div&gt;`;
+        const sessionBox = root.querySelector(&#x27;[data-state-session]&#x27;);
+        sessionBox.className = `tf-state ${state.session === &#x27;connected&#x27; ? &#x27;tf-state-ok&#x27; : state.session === &#x27;recovery&#x27; ? &#x27;tf-state-alert&#x27; : &#x27;&#x27;}`;
+        sessionBox.innerHTML = `&lt;div class=&quot;tf-state-label&quot;&gt;独立 Platform Session&lt;/div&gt;&lt;div class=&quot;tf-state-value&quot;&gt;${labels.session[state.session]}&lt;/div&gt;&lt;div class=&quot;tf-state-detail&quot;&gt;切换工作区不会复用当前会话&lt;/div&gt;`;
+        const runBox = root.querySelector(&#x27;[data-state-run]&#x27;);
+        runBox.className = `tf-state wide ${state.run === &#x27;recovery_required&#x27; ? &#x27;tf-state-alert&#x27; : state.run === &#x27;completed&#x27; ? &#x27;tf-state-ok&#x27; : &#x27;&#x27;}`;
+        runBox.innerHTML = `&lt;div class=&quot;tf-state-label&quot;&gt;Recoverable Run&lt;/div&gt;&lt;div class=&quot;tf-state-value&quot;&gt;${labels.run[state.run]} · ${labels.step[state.step] || state.step}&lt;/div&gt;&lt;div class=&quot;tf-state-detail&quot;&gt;${state.stopReason || (state.outcome === &#x27;success&#x27; ? &#x27;平台写入已确认成功&#x27; : state.localDecision ? &#x27;已保存一个本地决定&#x27; : &#x27;没有待处理异常&#x27;)}&lt;/div&gt;`;
+      }
+      function renderIntent() {
+        const box = root.querySelector(&#x27;[data-intent]&#x27;);
+        if (!state.intent) { box.className = &#x27;tf-intent empty&#x27;; box.textContent = &#x27;当前没有待确认写入。&#x27;; return; }
+        box.className = &#x27;tf-intent&#x27;;
+        box.innerHTML = `&lt;div class=&quot;tf-state-label&quot;&gt;Write Intent · ${state.intent.status === &#x27;pending&#x27; ? &#x27;等待确认&#x27; : &#x27;已消费&#x27;}&lt;/div&gt;&lt;dl&gt;&lt;dt&gt;编号&lt;/dt&gt;&lt;dd&gt;${state.intent.id}&lt;/dd&gt;&lt;dt&gt;工作区&lt;/dt&gt;&lt;dd&gt;${machine.workspaceNames[state.intent.workspace]}&lt;/dd&gt;&lt;dt&gt;目标&lt;/dt&gt;&lt;dd&gt;${state.intent.target}&lt;/dd&gt;&lt;dt&gt;动作&lt;/dt&gt;&lt;dd&gt;${state.intent.action}&lt;/dd&gt;&lt;dt&gt;内容&lt;/dt&gt;&lt;dd&gt;${state.intent.content}&lt;/dd&gt;&lt;/dl&gt;`;
+      }
+      function renderScenario() {
+        root.querySelector(&#x27;.tf-tabs&#x27;).innerHTML = scenarios.map((s,index) =&gt; `&lt;button class=&quot;tf-tab&quot; role=&quot;tab&quot; aria-selected=&quot;${index === scenarioIndex}&quot; data-tab=&quot;${index}&quot;&gt;${s.name}&lt;/button&gt;`).join(&#x27;&#x27;);
+        const scenario = scenarios[scenarioIndex];
+        root.querySelector(&#x27;[data-scenario]&#x27;).innerHTML = `&lt;h3&gt;${scenario.name}&lt;/h3&gt;&lt;p&gt;${scenario.description}&lt;/p&gt;&lt;div class=&quot;tf-steps&quot;&gt;${scenario.steps.map((step,index) =&gt; `&lt;button class=&quot;tf-step ${index &lt; scenarioStep ? &#x27;done&#x27; : index === scenarioStep ? &#x27;current&#x27; : &#x27;&#x27;}&quot; data-scenario-step=&quot;${index}&quot; ${index &gt; scenarioStep ? &#x27;disabled&#x27; : &#x27;&#x27;}&gt;${index &lt; scenarioStep ? &#x27;✓ &#x27; : `${index + 1}. `}${step[0]}&lt;/button&gt;`).join(&#x27;&#x27;)}&lt;/div&gt;`;
+        root.querySelectorAll(&#x27;[data-tab]&#x27;).forEach(button =&gt; button.addEventListener(&#x27;click&#x27;, () =&gt; { scenarioIndex = Number(button.dataset.tab); scenarioStep = 0; state = machine.initialState(); log = []; render(null, { accepted:true, message:&#x27;场景已重置。&#x27; }); }));
+        root.querySelectorAll(&#x27;[data-scenario-step]&#x27;).forEach(button =&gt; button.addEventListener(&#x27;click&#x27;, () =&gt; { const index = Number(button.dataset.scenarioStep); if (index !== scenarioStep) return; dispatch(scenario.steps[index][1], true); }));
+      }
+      function renderLog() {
+        root.querySelector(&#x27;[data-log]&#x27;).innerHTML = log.length ? log.map(item =&gt; `&lt;li class=&quot;tf-log-item ${item.accepted ? &#x27;&#x27; : &#x27;rejected&#x27;}&quot;&gt;&lt;time&gt;${item.time}&lt;/time&gt;&lt;span class=&quot;tf-log-action&quot;&gt;${item.action}&lt;/span&gt;&lt;span&gt;${item.accepted ? &#x27;已接受：&#x27; : &#x27;已拒绝：&#x27;}${item.message}&lt;/span&gt;&lt;/li&gt;`).join(&#x27;&#x27;) : &#x27;&lt;li class=&quot;tf-log-item&quot;&gt;&lt;span&gt;暂无记录。请选择自由操作或运行一个引导场景。&lt;/span&gt;&lt;/li&gt;&#x27;;
+      }
+      function render(previous, outcome) {
+        renderPath(); renderState(); renderIntent(); renderScenario(); renderLog();
+        const resultBox = root.querySelector(&#x27;[data-result]&#x27;);
+        resultBox.className = `tf-result ${outcome &amp;&amp; outcome.accepted ? &#x27;accepted&#x27; : outcome ? &#x27;rejected&#x27; : &#x27;&#x27;}`;
+        resultBox.textContent = outcome ? `${outcome.accepted ? &#x27;已接受&#x27; : &#x27;已拒绝&#x27;}：${outcome.message}` : &#x27;尚未执行操作。&#x27;;
+      }
+      root.querySelectorAll(&#x27;[data-action]&#x27;).forEach(button =&gt; button.addEventListener(&#x27;click&#x27;, () =&gt; dispatch(button.dataset.action)));
+      render(null, null);
+    })();
+  &lt;/script&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
