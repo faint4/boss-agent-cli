@@ -1,6 +1,7 @@
 """Public interface for the authoritative application module."""
 
 from boss_agent_cli.application.contracts import (
+	ApplicationCommand,
 	ApplicationEvent,
 	ApplicationStateSnapshot,
 	CancelRunCommand,
@@ -43,19 +44,28 @@ from boss_agent_cli.application.contracts import (
 	WriteIntentState,
 	WorkspaceKind,
 )
+from boss_agent_cli.application.core_journey_contract import (
+	CORE_JOURNEY_CONTRACTS,
+	JOB_SEEKING_CONTRACT,
+	RECRUITING_CONTRACT,
+	CoreJourneyContract,
+)
 from boss_agent_cli.application.module import Application, BossAdapterFailure
 
 __all__ = [
 	"Application",
+	"ApplicationCommand",
 	"ApplicationEvent",
 	"ApplicationStateSnapshot",
 	"BossAdapterFailure",
+	"CORE_JOURNEY_CONTRACTS",
 	"CancelRunCommand",
 	"CancelWriteIntentCommand",
 	"CommandResult",
 	"ConfirmWriteIntentCommand",
 	"ConnectPlatformSessionCommand",
 	"CurrentStateQuery",
+	"CoreJourneyContract",
 	"DomainError",
 	"DomainErrorDetails",
 	"ErrorCode",
@@ -66,6 +76,7 @@ __all__ = [
 	"JobSearchBatch",
 	"JobSearchGoal",
 	"JobSeekingState",
+	"JOB_SEEKING_CONTRACT",
 	"JobSourceDetail",
 	"JobSummary",
 	"LoadRecruitingOpeningsCommand",
@@ -77,6 +88,7 @@ __all__ = [
 	"RecruitingOpening",
 	"RecruitingProspectContext",
 	"RecruitingState",
+	"RECRUITING_CONTRACT",
 	"LogoutPlatformSessionCommand",
 	"RunEventKind",
 	"RunSummary",

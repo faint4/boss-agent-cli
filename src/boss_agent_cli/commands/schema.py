@@ -2,6 +2,7 @@ from typing import Any, cast
 
 import click
 
+from boss_agent_cli.application.core_journey_contract import JOB_SEEKING_CONTRACT, RECRUITING_CONTRACT
 from boss_agent_cli.compliance import compliance_mode_data
 from boss_agent_cli.output import emit_success
 from boss_agent_cli.platforms import list_platforms, list_recruiter_platforms
@@ -372,14 +373,10 @@ SCHEMA_DATA = {
 			},
 		},
 		"job": {
-			"description": "通过 Web 同款共享应用合同运行求职主流程；单次 action 适合 MCP，CLI 完整流程使用 run + steps 保持进程内状态",
+			"description": JOB_SEEKING_CONTRACT.cli_description,
 			"args": [],
 			"options": {
-				"--input-json": {
-					"type": "string",
-					"default": '{"action":"state"}',
-					"description": "Job-Seeking action object；action=run 时传 steps 数组",
-				},
+				"--input-json": JOB_SEEKING_CONTRACT.cli_option_schema(),
 			},
 		},
 		"search": {
@@ -1070,7 +1067,7 @@ SCHEMA_DATA = {
 			"args": [],
 			"options": {},
 			"subcommands": {
-				"journey": "共享招聘主流程（openings → applicants → inspect → prepare-reply → confirm/cancel）",
+				"journey": RECRUITING_CONTRACT.cli_description,
 				"applications": "查看候选人投递申请列表",
 				"resume": "查看候选人在线简历或发起联系方式交换",
 				"chat": "查看与候选人的沟通列表（含未读数和最近消息摘要）",

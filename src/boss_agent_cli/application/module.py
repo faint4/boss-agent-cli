@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from boss_agent_cli.application.contracts import (
+	ApplicationCommand,
 	ApplicationEvent,
 	ApplicationStateSnapshot,
 	CancelRunCommand,
@@ -294,24 +295,7 @@ class Application:
 
 	def execute(
 		self,
-		command: (
-			SwitchWorkspaceCommand
-			| ConnectPlatformSessionCommand
-			| LogoutPlatformSessionCommand
-			| UpdateJobSearchGoalCommand
-			| StartJobSearchCommand
-			| CancelRunCommand
-			| InspectJobCommand
-			| SetShortlistedCommand
-			| PrepareJobGreetingCommand
-			| PrepareRecruitingReplyCommand
-			| ConfirmWriteIntentCommand
-			| CancelWriteIntentCommand
-			| LoadRecruitingOpeningsCommand
-			| SelectRecruitingOpeningCommand
-			| StartInboundApplicantsCommand
-			| InspectRecruitingProspectCommand
-		),
+		command: ApplicationCommand,
 		context: RequestContext,
 	) -> CommandResult:
 		workspace = self._active_workspace(context)

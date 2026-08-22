@@ -22,6 +22,8 @@ boss <命令> --help                      # 查看单个命令选项
 
 Job-Seeking Core Journey 另有一个共享应用合同入口：本地 Web 直接调用应用命令，CLI 使用 `boss job --input-json`，MCP 使用 `boss_job`。三者共享目标、搜索、查看、候选清单、写入意图准备/确认/取消及错误语义。当前共享入口只支持 `zhipin`；其他平台继续使用兼容命令。CLI 的进程结束后不会保留搜索结果或待确认写入，因此完整流程要放在一次 `action=run` 的 `steps` 中；MCP server 会在进程内保留这些状态。
 
+<!-- core-journey-actions:job-seeking --> state, goal, search, cancel-search, inspect, shortlist, prepare-greeting, confirm, cancel-write, run
+
 ```bash
 boss --json job --input-json '{"action":"run","steps":[
   {"action":"goal","objective":"寻找后端岗位","keyword":"Python","city":"上海"},
@@ -142,6 +144,8 @@ boss crawl stop <run_id>
 | `boss hr candidates <keyword>` | 搜索和筛选候选人 |
 | `boss hr reply <friend_id> <message>` | 回复候选人消息 |
 | `boss hr request-resume <friend_id>` | 请求候选人分享附件简历 |
+
+<!-- core-journey-actions:recruiting --> state, openings, select-opening, applicants, cancel-applicants, inspect, prepare-reply, confirm, cancel-write, run
 
 迁移说明：`boss hr reply` 为兼容旧脚本保留，仍会立即发送。新脚本应改用 `boss hr journey`；敏感简历、聊天、联系方式和待发文本只在当前进程内存中保留，退出、取消、恢复或上下文切换会清除，不由 surface adapter 持久化。
 

@@ -182,6 +182,26 @@ class InspectRecruitingProspectCommand:
 	reference: str
 
 
+ApplicationCommand = (
+	SwitchWorkspaceCommand
+	| ConnectPlatformSessionCommand
+	| LogoutPlatformSessionCommand
+	| UpdateJobSearchGoalCommand
+	| StartJobSearchCommand
+	| CancelRunCommand
+	| InspectJobCommand
+	| SetShortlistedCommand
+	| PrepareJobGreetingCommand
+	| PrepareRecruitingReplyCommand
+	| ConfirmWriteIntentCommand
+	| CancelWriteIntentCommand
+	| LoadRecruitingOpeningsCommand
+	| SelectRecruitingOpeningCommand
+	| StartInboundApplicantsCommand
+	| InspectRecruitingProspectCommand
+)
+
+
 @dataclass(frozen=True)
 class JobSummary:
 	reference: str
