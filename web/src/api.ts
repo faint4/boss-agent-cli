@@ -41,3 +41,36 @@ export async function loadSnapshot(): Promise<ApplicationSnapshot> {
   const body = (await response.json()) as { snapshot: ApplicationSnapshot };
   return body.snapshot;
 }
+
+function nextRequestId(): string {
+  return crypto.randomUUID();
+}
+
+async function sendCommand(path: string, payload: Record<string, unknown>): Promise<ApplicationSnapshot> {
+  const token = await authenticate();
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ request_id: nextRequestId(), ...payload }),
+  });
+  if (!response.ok) {
+    throw new Error("操作未完成，当前工作区未执行后续动作。请重试。");
+  }
+  const body = (await response.json()) as { snapshot: ApplicationSnapshot };
+  return body.snapshot;
+}
+
+export function switchWorkspace(workspace: ApplicationSnapshot["active_workspace"]): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/switch-workspace", { workspace });
+}
+
+export function connectPlatformSession(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/connect-platform-session", {});
+}
+
+export function logoutPlatformSession(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/logout-platform-session", {});
+}

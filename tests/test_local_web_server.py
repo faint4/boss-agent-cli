@@ -5,6 +5,7 @@ import http.client
 import json
 import socket
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,6 +14,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from boss_agent_cli.web.auth import StartupAuthenticator
+from boss_agent_cli.web.dpapi import CredentialProtectionError
+from boss_agent_cli.web.runtime import create_application
 from boss_agent_cli.web.server import LocalWebServer
 
 
@@ -44,7 +47,11 @@ def _running_server(tmp_path: Path) -> Iterator[LocalWebServer]:
 		local_session_id="local-session-1",
 		session_token_factory=lambda: "session-token",
 	)
-	server = LocalWebServer(static_root=_static_root(tmp_path), authenticator=authenticator)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		product_root=tmp_path / "data",
+	)
 	server.start()
 	try:
 		yield server
@@ -86,6 +93,25 @@ def _exchange(server: LocalWebServer) -> str:
 	return str(json.loads(body)["session_token"])
 
 
+class _PurposeBoundProtector:
+	def protect(self, plaintext: bytes, *, purpose: bytes) -> bytes:
+		return purpose + b"\0" + plaintext[::-1]
+
+	def unprotect(self, ciphertext: bytes, *, purpose: bytes) -> bytes:
+		prefix = purpose + b"\0"
+		if not ciphertext.startswith(prefix):
+			raise CredentialProtectionError("credential purpose mismatch")
+		return ciphertext[len(prefix) :][::-1]
+
+
+def _command_headers(server: LocalWebServer, token: str) -> dict[str, str]:
+	return {
+		"Authorization": f"Bearer {token}",
+		"Origin": server.origin,
+		"Sec-Fetch-Site": "same-origin",
+	}
+
+
 def test_server_uses_an_ephemeral_ipv4_loopback_port(tmp_path: Path):
 	with _running_server(tmp_path) as server:
 		assert server.host == "127.0.0.1"
@@ -104,7 +130,7 @@ def test_default_startup_secrets_have_at_least_256_bits_and_expire():
 
 
 def test_browser_is_opened_only_after_the_listener_is_ready(tmp_path: Path):
-	server = LocalWebServer(static_root=_static_root(tmp_path))
+	server = LocalWebServer(static_root=_static_root(tmp_path), product_root=tmp_path / "data")
 	opened = threading.Event()
 	opened_urls: list[str] = []
 
@@ -163,8 +189,7 @@ def test_host_and_proxy_host_attacks_are_rejected_before_routing(
 def test_duplicate_host_headers_are_rejected(tmp_path: Path):
 	with _running_server(tmp_path) as server:
 		request = (
-			f"GET / HTTP/1.1\r\nHost: {server.expected_host}\r\n"
-			"Host: attacker.example\r\nConnection: close\r\n\r\n"
+			f"GET / HTTP/1.1\r\nHost: {server.expected_host}\r\nHost: attacker.example\r\nConnection: close\r\n\r\n"
 		).encode("ascii")
 		with socket.create_connection((server.host, server.port), timeout=2) as connection:
 			connection.sendall(request)
@@ -244,7 +269,9 @@ def test_write_request_origin_fetch_metadata_and_content_type_are_enforced(
 	expected_status: int,
 ):
 	with _running_server(tmp_path) as server:
-		resolved_headers = {name: (server.origin if value == "__ORIGIN__" else value) for name, value in headers.items()}
+		resolved_headers = {
+			name: (server.origin if value == "__ORIGIN__" else value) for name, value in headers.items()
+		}
 		status, response_headers, _ = _request(
 			server,
 			"POST",
@@ -298,7 +325,11 @@ def test_tokens_from_a_previous_process_are_rejected(tmp_path: Path):
 		local_session_id="local-session-2",
 		session_token_factory=lambda: "second-session",
 	)
-	second = LocalWebServer(static_root=_static_root(tmp_path / "second"), authenticator=second_auth)
+	second = LocalWebServer(
+		static_root=_static_root(tmp_path / "second"),
+		authenticator=second_auth,
+		product_root=tmp_path / "second-data",
+	)
 	second.start()
 	try:
 		status, _, _ = _request(
@@ -320,3 +351,129 @@ def test_browser_bridge_routes_are_not_exposed(tmp_path: Path):
 
 	assert command_status == 404
 	assert extension_status == 404
+
+
+def test_authenticated_command_routes_switch_connect_and_logout_the_active_workspace(tmp_path: Path):
+	login_started = threading.Event()
+	allow_login = threading.Event()
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-commands",
+		session_token_factory=lambda: "session-token",
+	)
+	application = create_application(
+		authenticator.local_session_id,
+		product_root=tmp_path / "data",
+		protector=_PurposeBoundProtector(),
+		login_provider=lambda workspace: (
+			login_started.set(),
+			allow_login.wait(timeout=2),
+			{"workspace": workspace.value, "cookies": {"wt2": "secret"}},
+		)[2],
+	)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		switch_status, _, switch_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/switch-workspace",
+			headers=headers,
+			body={"request_id": "switch-1", "workspace": "recruiting"},
+		)
+		connect_status, _, connect_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/connect-platform-session",
+			headers=headers,
+			body={"request_id": "connect-1"},
+		)
+		assert login_started.wait(timeout=2)
+		allow_login.set()
+		deadline = time.monotonic() + 2
+		state = "connecting"
+		while state == "connecting" and time.monotonic() < deadline:
+			_, _, state_body = _request(
+				server,
+				"GET",
+				"/api/v1/state",
+				headers={"Authorization": f"Bearer {token}"},
+			)
+			state = json.loads(state_body)["snapshot"]["platform_session"]
+		logout_status, _, logout_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/logout-platform-session",
+			headers=headers,
+			body={"request_id": "logout-1"},
+		)
+	finally:
+		server.close()
+
+	assert switch_status == 200
+	assert json.loads(switch_body)["snapshot"]["active_workspace"] == "recruiting"
+	assert connect_status == 200
+	assert json.loads(connect_body)["snapshot"]["platform_session"] == "connecting"
+	assert state == "connected"
+	assert logout_status == 200
+	assert json.loads(logout_body)["snapshot"]["platform_session"] in {"stopping", "disconnected"}
+
+
+@pytest.mark.parametrize(
+	("path", "body"),
+	[
+		(
+			"/api/v1/commands/switch-workspace",
+			{"request_id": "switch-invalid", "workspace": "../../outside"},
+		),
+		(
+			"/api/v1/commands/switch-workspace",
+			{"request_id": "switch-extra", "workspace": "recruiting", "root": "C:/outside"},
+		),
+		("/api/v1/commands/connect-platform-session", {"request_id": "connect-extra", "cookies": {}}),
+		("/api/v1/commands/logout-platform-session", {}),
+	],
+)
+def test_command_routes_reject_unknown_workspaces_and_fields(
+	tmp_path: Path,
+	path: str,
+	body: dict[str, object],
+):
+	with _running_server(tmp_path) as server:
+		token = _exchange(server)
+		status, _, response_body = _request(
+			server,
+			"POST",
+			path,
+			headers=_command_headers(server, token),
+			body=body,
+		)
+
+	assert status == 400
+	assert json.loads(response_body) == {"error": {"code": "INVALID_REQUEST", "message": "Invalid request"}}
+	assert not (tmp_path / "outside").exists()
+
+
+def test_cross_origin_command_cannot_switch_or_create_the_other_workspace(tmp_path: Path):
+	with _running_server(tmp_path) as server:
+		token = _exchange(server)
+		status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/switch-workspace",
+			headers={
+				"Authorization": f"Bearer {token}",
+				"Origin": "https://attacker.example",
+				"Sec-Fetch-Site": "cross-site",
+			},
+			body={"request_id": "cross-origin", "workspace": "recruiting"},
+		)
+
+	assert status == 403
+	assert not (tmp_path / "data" / "workspaces" / "recruiting").exists()

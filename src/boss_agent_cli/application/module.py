@@ -8,11 +8,13 @@ from boss_agent_cli.application.contracts import (
 	ApplicationEvent,
 	ApplicationStateSnapshot,
 	CommandResult,
+	ConnectPlatformSessionCommand,
 	CurrentStateQuery,
 	DomainError,
 	ErrorCode,
 	PlatformSessionState,
 	RequestContext,
+	LogoutPlatformSessionCommand,
 	SwitchWorkspaceCommand,
 	WorkspaceKind,
 )
@@ -20,11 +22,17 @@ from boss_agent_cli.application.contracts import (
 
 class WorkspaceStore(Protocol):
 	def active_workspace(self, local_session_id: str) -> WorkspaceKind: ...
+	def switch_workspace(self, local_session_id: str, workspace: WorkspaceKind) -> None: ...
+	def sensitive_content_present(self, workspace: WorkspaceKind) -> bool: ...
+	def last_transition(self, local_session_id: str) -> str | None: ...
 	def read_events(self, run_id: str) -> tuple[ApplicationEvent, ...]: ...
 
 
 class CredentialStore(Protocol):
 	def platform_session_state(self, workspace: WorkspaceKind) -> PlatformSessionState: ...
+	def activate(self, workspace: WorkspaceKind) -> None: ...
+	def begin_connect(self, workspace: WorkspaceKind) -> None: ...
+	def begin_logout(self, workspace: WorkspaceKind) -> None: ...
 
 
 class BossAdapter(Protocol):
@@ -58,10 +66,36 @@ class Application:
 
 	def execute(
 		self,
-		command: SwitchWorkspaceCommand,
+		command: SwitchWorkspaceCommand | ConnectPlatformSessionCommand | LogoutPlatformSessionCommand,
 		context: RequestContext,
 	) -> CommandResult:
-		self._active_workspace(context)
+		workspace = self._active_workspace(context)
+		if isinstance(command, SwitchWorkspaceCommand):
+			try:
+				self._workspace_store.switch_workspace(context.local_session_id, command.workspace)
+				self._credential_store.activate(command.workspace)
+			except PermissionError as exc:
+				raise DomainError(
+					code=ErrorCode.UNAUTHORIZED_CONTEXT,
+					message="Local session is not authorized",
+					correlation_id=context.correlation_id,
+					recoverable=False,
+				) from exc
+			except OSError as exc:
+				raise DomainError(
+					code=ErrorCode.STORAGE_UNAVAILABLE,
+					message="Workspace storage is unavailable",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Retry the workspace switch",
+				) from exc
+			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
+		if isinstance(command, ConnectPlatformSessionCommand):
+			self._credential_store.begin_connect(workspace)
+			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
+		if isinstance(command, LogoutPlatformSessionCommand):
+			self._credential_store.begin_logout(workspace)
+			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		raise DomainError(
 			code=ErrorCode.UNSUPPORTED_COMMAND,
 			message=f"Command {type(command).__name__} is not available yet",
@@ -98,6 +132,8 @@ class Application:
 			schema_version="1",
 			active_workspace=workspace,
 			platform_session=platform_session,
+			sensitive_content_present=self._workspace_store.sensitive_content_present(workspace),
+			last_transition=self._workspace_store.last_transition(context.local_session_id),
 		)
 
 	def events(

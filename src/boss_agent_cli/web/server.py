@@ -17,7 +17,16 @@ from types import TracebackType
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
-from boss_agent_cli.application import Application, CurrentStateQuery, DomainError, RequestContext
+from boss_agent_cli.application import (
+	Application,
+	ConnectPlatformSessionCommand,
+	CurrentStateQuery,
+	DomainError,
+	LogoutPlatformSessionCommand,
+	RequestContext,
+	SwitchWorkspaceCommand,
+	WorkspaceKind,
+)
 from boss_agent_cli.web.auth import StartupAuthenticator
 from boss_agent_cli.web.runtime import create_application
 
@@ -216,6 +225,63 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			include_body=include_body,
 		)
 
+	def _handle_command(self, path: str) -> None:
+		payload = self._read_json()
+		if payload is None:
+			return
+		request_id = payload.get("request_id")
+		if not isinstance(request_id, str) or not request_id or len(request_id) > 128:
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+			return
+		command: SwitchWorkspaceCommand | ConnectPlatformSessionCommand | LogoutPlatformSessionCommand
+		if path == "/api/v1/commands/switch-workspace":
+			if set(payload) != {"request_id", "workspace"} or not isinstance(payload["workspace"], str):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			try:
+				command = SwitchWorkspaceCommand(workspace=WorkspaceKind(payload["workspace"]))
+			except ValueError:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+		elif path == "/api/v1/commands/connect-platform-session":
+			if set(payload) != {"request_id"}:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = ConnectPlatformSessionCommand()
+		elif path == "/api/v1/commands/logout-platform-session":
+			if set(payload) != {"request_id"}:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = LogoutPlatformSessionCommand()
+		else:
+			self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found")
+			return
+		try:
+			result = self.owner.application.execute(
+				command,
+				RequestContext(
+					local_session_id=self.owner.authenticator.local_session_id,
+					correlation_id=self.owner.new_correlation_id(),
+				),
+			)
+		except DomainError as exc:
+			status = HTTPStatus.SERVICE_UNAVAILABLE if exc.recoverable else HTTPStatus.BAD_REQUEST
+			self._send_json(
+				status,
+				{
+					"schema_version": "1",
+					"error": {
+						"code": exc.code,
+						"message": exc.message,
+						"recoverable": exc.recoverable,
+						"recovery_action": exc.recovery_action,
+						"correlation_id": exc.correlation_id,
+					},
+				},
+			)
+			return
+		self._send_json(HTTPStatus.OK, {"schema_version": "1", "snapshot": result.snapshot})
+
 	def _handle_api(self, method: str, path: str, *, include_body: bool) -> None:
 		if method == "POST" and path == "/api/v1/session":
 			self._handle_session_exchange()
@@ -224,6 +290,9 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			return
 		if method in {"GET", "HEAD"} and path == "/api/v1/state":
 			self._handle_state(include_body=include_body)
+			return
+		if method == "POST" and path.startswith("/api/v1/commands/"):
+			self._handle_command(path)
 			return
 		self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found", include_body=include_body)
 
@@ -308,9 +377,13 @@ class LocalWebServer:
 		static_root: Path | None = None,
 		authenticator: StartupAuthenticator | None = None,
 		application: Application | None = None,
+		product_root: Path | None = None,
 	) -> None:
 		self.authenticator = authenticator or StartupAuthenticator()
-		self.application = application or create_application(self.authenticator.local_session_id)
+		self.application = application or create_application(
+			self.authenticator.local_session_id,
+			product_root=product_root,
+		)
 		self.static_root = (static_root or Path(__file__).with_name("static")).resolve()
 		if not (self.static_root / "index.html").is_file():
 			raise RuntimeError("Production Web assets are missing; build the React application first")

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadSnapshot } from "./api";
+import {
+  connectPlatformSession,
+  loadSnapshot,
+  logoutPlatformSession,
+  switchWorkspace,
+} from "./api";
 import { deriveView, type ApplicationSnapshot, type SnapshotView } from "./state";
 
 type ScreenState = "loading" | SnapshotView;
@@ -36,6 +41,62 @@ function Pipeline() {
     <ol className="pipeline" aria-label="任务流水线">
       {stages.map((stage, index) => <li key={stage}><span>{index + 1}</span>{stage}</li>)}
     </ol>
+  );
+}
+
+export function WorkspaceControls({
+  snapshot,
+  busy,
+  commandError,
+  onSwitch,
+  onConnect,
+  onLogout,
+}: {
+  snapshot: ApplicationSnapshot;
+  busy: boolean;
+  commandError: string | null;
+  onSwitch: (workspace: ApplicationSnapshot["active_workspace"]) => void;
+  onConnect: () => void;
+  onLogout: () => void;
+}) {
+  const jobSeekingActive = snapshot.active_workspace === "job-seeking";
+  const sessionControl = {
+    disconnected: <button disabled={busy} onClick={onConnect}>连接 BOSS</button>,
+    connecting: <button disabled>正在打开官方登录窗口…</button>,
+    connected: <button className="secondary-button" disabled={busy} onClick={onLogout}>退出并清除凭据</button>,
+    stopping: <button disabled>正在安全退出…</button>,
+    recovery: <button disabled={busy} onClick={onConnect}>重新连接 BOSS</button>,
+  }[snapshot.platform_session];
+
+  return (
+    <section className="workspace-controls" aria-labelledby="workspace-controls-title">
+      <div>
+        <p className="eyebrow" id="workspace-controls-title">工作区与平台会话</p>
+        <div className="workspace-buttons">
+          <button
+            className={jobSeekingActive ? "workspace-active" : "secondary-button"}
+            aria-pressed={jobSeekingActive}
+            disabled={busy || jobSeekingActive}
+            onClick={() => onSwitch("job-seeking")}
+          >
+            {jobSeekingActive ? "求职工作区（当前）" : "切换到求职工作区"}
+          </button>
+          <button
+            className={!jobSeekingActive ? "workspace-active" : "secondary-button"}
+            aria-pressed={!jobSeekingActive}
+            disabled={busy || !jobSeekingActive}
+            onClick={() => onSwitch("recruiting")}
+          >
+            {!jobSeekingActive ? "招聘工作区（当前）" : "切换到招聘工作区"}
+          </button>
+        </div>
+      </div>
+      <div className="session-control">
+        <span>当前工作区的独立会话</span>
+        {sessionControl}
+      </div>
+      {commandError ? <p className="command-error" role="alert">{commandError}</p> : null}
+    </section>
   );
 }
 
@@ -93,9 +154,13 @@ export default function App() {
   const [screen, setScreen] = useState<ScreenState>("loading");
   const [snapshot, setSnapshot] = useState<ApplicationSnapshot | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [commandPending, setCommandPending] = useState(false);
+  const [commandError, setCommandError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setScreen("loading");
+  const refresh = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setScreen("loading");
+    }
     setClientError(null);
     try {
       const nextSnapshot = await loadSnapshot();
@@ -108,8 +173,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void refresh(true);
   }, [refresh]);
+
+  useEffect(() => {
+    if (!snapshot || !["connecting", "stopping"].includes(snapshot.platform_session)) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => void refresh(), 500);
+    return () => window.clearInterval(timer);
+  }, [refresh, snapshot]);
+
+  const perform = useCallback(async (action: () => Promise<ApplicationSnapshot>) => {
+    setCommandPending(true);
+    setCommandError(null);
+    try {
+      const nextSnapshot = await action();
+      setSnapshot(nextSnapshot);
+      setScreen(deriveView(nextSnapshot));
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : "操作未完成，请重试。");
+    } finally {
+      setCommandPending(false);
+    }
+  }, []);
 
   if (screen === "loading") {
     return <main className="center-card" aria-live="polite"><div className="spinner" /><h1>正在安全启动本地工作台</h1><p>正在建立一次性本机会话并读取服务端状态。</p></main>;
@@ -122,6 +209,14 @@ export default function App() {
   return (
     <main className="app-shell">
       <StatusChrome snapshot={snapshot} />
+      <WorkspaceControls
+        snapshot={snapshot}
+        busy={commandPending}
+        commandError={commandError}
+        onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))}
+        onConnect={() => void perform(connectPlatformSession)}
+        onLogout={() => void perform(logoutPlatformSession)}
+      />
       <Pipeline />
       <SnapshotPanel
         screen={screen}
@@ -129,7 +224,7 @@ export default function App() {
         clientError={clientError}
         onRefresh={() => void refresh()}
       />
-      <footer>仅监听 127.0.0.1 · 会话凭据只保存在内存中</footer>
+      <footer>仅监听 127.0.0.1 · 各工作区凭据由当前 Windows 用户加密保存</footer>
     </main>
   );
 }

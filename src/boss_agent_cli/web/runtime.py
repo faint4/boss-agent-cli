@@ -2,37 +2,35 @@
 
 from __future__ import annotations
 
-from boss_agent_cli.application import Application, ApplicationEvent, PlatformSessionState, WorkspaceKind
+from pathlib import Path
+from typing import Any
+
+from boss_agent_cli.application import Application, WorkspaceKind
+from boss_agent_cli.auth.browser import login_via_browser
+from boss_agent_cli.web.dpapi import CredentialProtector, default_credential_protector
+from boss_agent_cli.web.platform_session import LoginProvider, PlatformSessionManager, WorkspaceSessionStore
+from boss_agent_cli.web.workspace import WorkspaceRegistry, default_product_root
 
 
-class _LocalWorkspaceStore:
-	def __init__(self, local_session_id: str) -> None:
-		self._local_session_id = local_session_id
+def _official_boss_login(workspace: WorkspaceKind) -> dict[str, Any]:
+	"""Open a dedicated official BOSS login window without inspecting daily-browser cookies."""
 
-	def active_workspace(self, local_session_id: str) -> WorkspaceKind:
-		if local_session_id != self._local_session_id:
-			raise PermissionError("local session is not authorized")
-		return WorkspaceKind.JOB_SEEKING
-
-	def read_events(self, run_id: str) -> tuple[ApplicationEvent, ...]:
-		raise KeyError(run_id)
+	return login_via_browser(timeout=120, platform="zhipin")
 
 
-class _DisconnectedCredentialStore:
-	def platform_session_state(self, workspace: WorkspaceKind) -> PlatformSessionState:
-		return PlatformSessionState.DISCONNECTED
+def create_application(
+	local_session_id: str,
+	*,
+	product_root: Path | None = None,
+	protector: CredentialProtector | None = None,
+	login_provider: LoginProvider | None = None,
+) -> Application:
+	"""Create isolated Web workspaces without enabling Browser Bridge."""
 
-
-class _UnavailableBossAdapter:
-	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
-		raise RuntimeError("BOSS adapter is not connected to the local Web shell")
-
-
-def create_application(local_session_id: str) -> Application:
-	"""Create the shared application seam without enabling Browser Bridge or remote access."""
-
-	return Application(
-		workspace_store=_LocalWorkspaceStore(local_session_id),
-		credential_store=_DisconnectedCredentialStore(),
-		boss=_UnavailableBossAdapter(),
+	registry = WorkspaceRegistry(product_root or default_product_root(), local_session_id=local_session_id)
+	sessions = PlatformSessionManager(
+		registry=registry,
+		store=WorkspaceSessionStore(registry=registry, protector=protector or default_credential_protector()),
+		login_provider=login_provider or _official_boss_login,
 	)
+	return Application(workspace_store=registry, credential_store=sessions, boss=sessions)
