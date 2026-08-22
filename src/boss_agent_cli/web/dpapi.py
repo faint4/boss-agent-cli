@@ -5,7 +5,7 @@ from __future__ import annotations
 import ctypes
 import sys
 from ctypes import wintypes
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class CredentialProtectionError(RuntimeError):
@@ -34,8 +34,8 @@ class WindowsDPAPIProtector:
 	def __init__(self) -> None:
 		if sys.platform != "win32":
 			raise CredentialProtectionError("Windows DPAPI is unavailable")
-		self._crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
-		self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+		self._crypt32: Any = ctypes.WinDLL("crypt32", use_last_error=True)
+		self._kernel32: Any = ctypes.WinDLL("kernel32", use_last_error=True)
 
 	def _call(self, function_name: str, payload: bytes, purpose: bytes) -> bytes:
 		payload_blob, payload_buffer = _blob(payload)
