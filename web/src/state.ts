@@ -52,6 +52,32 @@ export type JobSeekingState = {
   shortlist: JobSummary[];
 };
 
+export type RecruitingOpening = {
+  reference: string;
+  title: string;
+  status: string;
+};
+
+export type InboundApplicant = {
+  reference: string;
+  display_name: string;
+  headline: string;
+};
+
+export type RecruitingProspectContext = {
+  prospect: InboundApplicant;
+  resume_text: string;
+  chat_messages: string[];
+  contact_details: string[];
+};
+
+export type RecruitingState = {
+  openings: RecruitingOpening[];
+  selected_opening: RecruitingOpening | null;
+  applicants: InboundApplicant[];
+  selected_prospect: RecruitingProspectContext | null;
+};
+
 export type WriteIntentState =
   | "pending"
   | "executing"
@@ -86,6 +112,7 @@ export type ApplicationSnapshot = {
   last_transition: string | null;
   error: DomainError | null;
   job_seeking: JobSeekingState | null;
+  recruiting: RecruitingState | null;
 };
 
 export type SnapshotView = "ready" | "empty" | "error" | "recovery";
@@ -105,7 +132,12 @@ export function deriveView(snapshot: ApplicationSnapshot): SnapshotView {
     snapshot.active_run === null &&
     snapshot.selected_reference === null &&
     snapshot.local_decision === null &&
-    snapshot.pending_write_intent === null
+    snapshot.pending_write_intent === null &&
+    (snapshot.recruiting === null || (
+      snapshot.recruiting.openings.length === 0 &&
+      snapshot.recruiting.selected_opening === null &&
+      snapshot.recruiting.applicants.length === 0
+    ))
   ) {
     return "empty";
   }

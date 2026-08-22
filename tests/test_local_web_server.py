@@ -16,12 +16,16 @@ import pytest
 from boss_agent_cli.application import (
 	Application,
 	CurrentStateQuery,
+	InboundApplicant,
 	InspectJobCommand,
 	JobSearchBatch,
 	JobSearchGoal,
 	JobSourceDetail,
 	JobSummary,
 	PlatformSessionState,
+	RecruitingApplicantBatch,
+	RecruitingOpening,
+	RecruitingProspectContext,
 	RequestContext,
 	StartJobSearchCommand,
 	UpdateJobSearchGoalCommand,
@@ -598,6 +602,86 @@ def test_job_journey_api_rejects_extra_fields_without_starting_a_search(tmp_path
 
 	assert status == 400
 	assert json.loads(body)["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_recruiting_journey_api_is_explicit_and_rejects_extra_fields(tmp_path: Path):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-recruiting-api",
+		session_token_factory=lambda: "session-token",
+	)
+	opening = RecruitingOpening("opening-1", "Python 后端工程师", "招聘中")
+	applicant = InboundApplicant("prospect-1", "招聘对象甲", "5 年 Python 经验")
+	boss = FakeBossAdapter(
+		openings=(opening,),
+		applicant_batches=(RecruitingApplicantBatch((applicant,), 100),),
+		prospect_contexts={
+			"prospect-1": RecruitingProspectContext(
+				applicant,
+				resume_text="仅在明确查看后加载的简历",
+				chat_messages=("应聘者：您好",),
+				contact_details=("手机号已保护",),
+			),
+		},
+	)
+	application = Application(
+		workspace_store=WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-recruiting-api"),
+		credential_store=InMemoryCredentialStore(
+			{WorkspaceKind.RECRUITING: PlatformSessionState.CONNECTED},
+		),
+		boss=boss,
+		run_id_factory=lambda: "recruiting-api-1",
+	)
+	server = LocalWebServer(static_root=_static_root(tmp_path), authenticator=authenticator, application=application)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		statuses = []
+		for path, body in (
+			("/api/v1/commands/switch-workspace", {"request_id": "switch-1", "workspace": "recruiting"}),
+			("/api/v1/commands/load-recruiting-openings", {"request_id": "openings-1"}),
+			("/api/v1/commands/select-recruiting-opening", {"request_id": "select-1", "reference": "opening-1"}),
+			("/api/v1/commands/start-inbound-applicants", {"request_id": "applicants-1"}),
+		):
+			status, _, _ = _request(server, "POST", path, headers=headers, body=body)
+			statuses.append(status)
+		deadline = time.monotonic() + 2
+		state_body = b""
+		while time.monotonic() < deadline:
+			_, _, state_body = _request(server, "GET", "/api/v1/state", headers={"Authorization": f"Bearer {token}"})
+			if json.loads(state_body)["snapshot"]["active_run"]["state"] == "completed":
+				break
+		assert boss.prospect_context_calls == []
+		inspect_status, _, inspect_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/inspect-recruiting-prospect",
+			headers=headers,
+			body={"request_id": "inspect-1", "reference": "prospect-1"},
+		)
+		rejected_status, _, rejected_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/load-recruiting-openings",
+			headers=headers,
+			body={"request_id": "openings-2", "raw_platform_id": "must-not-pass"},
+		)
+	finally:
+		server.close()
+
+	assert statuses == [200, 200, 200, 200]
+	assert json.loads(state_body)["snapshot"]["recruiting"]["applicants"] == [
+		{"reference": "prospect-1", "display_name": "招聘对象甲", "headline": "5 年 Python 经验"},
+	]
+	assert inspect_status == 200
+	assert (
+		json.loads(inspect_body)["snapshot"]["recruiting"]["selected_prospect"]["resume_text"]
+		== "仅在明确查看后加载的简历"
+	)
+	assert boss.prospect_context_calls == ["prospect-1"]
+	assert rejected_status == 400
+	assert json.loads(rejected_body)["error"]["code"] == "INVALID_REQUEST"
 
 
 def test_write_intent_routes_whitelist_fields_and_confirm_exactly_once(tmp_path: Path):

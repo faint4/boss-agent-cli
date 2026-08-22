@@ -157,6 +157,26 @@ class CancelWriteIntentCommand:
 
 
 @dataclass(frozen=True)
+class LoadRecruitingOpeningsCommand:
+	pass
+
+
+@dataclass(frozen=True)
+class SelectRecruitingOpeningCommand:
+	reference: str
+
+
+@dataclass(frozen=True)
+class StartInboundApplicantsCommand:
+	pass
+
+
+@dataclass(frozen=True)
+class InspectRecruitingProspectCommand:
+	reference: str
+
+
+@dataclass(frozen=True)
 class JobSummary:
 	reference: str
 	title: str
@@ -194,6 +214,42 @@ class JobSeekingState:
 	results: tuple[JobSummary, ...] = ()
 	selected_job: JobDetailView | None = None
 	shortlist: tuple[JobSummary, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecruitingOpening:
+	reference: str
+	title: str
+	status: str = ""
+
+
+@dataclass(frozen=True)
+class InboundApplicant:
+	reference: str
+	display_name: str
+	headline: str = ""
+
+
+@dataclass(frozen=True)
+class RecruitingApplicantBatch:
+	items: tuple[InboundApplicant, ...]
+	progress: int
+
+
+@dataclass(frozen=True)
+class RecruitingProspectContext:
+	prospect: InboundApplicant
+	resume_text: str = ""
+	chat_messages: tuple[str, ...] = ()
+	contact_details: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecruitingState:
+	openings: tuple[RecruitingOpening, ...] = ()
+	selected_opening: RecruitingOpening | None = None
+	applicants: tuple[InboundApplicant, ...] = ()
+	selected_prospect: RecruitingProspectContext | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +297,7 @@ class ApplicationStateSnapshot:
 	last_transition: str | None = None
 	error: DomainErrorDetails | None = None
 	job_seeking: JobSeekingState | None = None
+	recruiting: RecruitingState | None = None
 
 
 @dataclass(frozen=True)

@@ -59,6 +59,11 @@ input:focus, textarea:focus { outline: 3px solid rgb(87 232 154 / 30%); border-c
 .job-card h3 { margin: 0 0 6px; }
 .job-card p, .job-card small { display: block; margin: 0; color: #64736a; }
 .card-actions { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.opening-list { margin-top: 18px; }
+.selected-card { border-color: #45ad72; background: #f4fff8; }
+.memory-notice { margin-top: 16px !important; padding: 12px 14px; color: #6e5518 !important; background: #fff8e4; border-radius: 12px; }
+.sensitive-panel { border-color: #d9b74d; }
+.context-list { display: grid; gap: 8px; padding-left: 22px; line-height: 1.6; }
 .detail-panel { grid-column: 1 / -1; }
 .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; margin: 0 0 24px; }
 .facts div { padding: 12px; background: #f3f7f4; border-radius: 12px; }

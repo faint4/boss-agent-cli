@@ -10,7 +10,13 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from boss_agent_cli.application import ApplicationEvent, JobSearchGoal, JobSummary, WorkspaceKind
+from boss_agent_cli.application import (
+	ApplicationEvent,
+	JobSearchGoal,
+	JobSummary,
+	RecruitingOpening,
+	WorkspaceKind,
+)
 
 
 @dataclass(frozen=True)
@@ -230,3 +236,28 @@ class WorkspaceRegistry:
 			)
 		except (json.JSONDecodeError, KeyError, TypeError, ValueError):
 			return ()
+
+	def save_recruiting_opening(self, opening: RecruitingOpening) -> None:
+		self.write_local_state(
+			WorkspaceKind.RECRUITING,
+			"selected-opening",
+			json.dumps(
+				{"reference": opening.reference, "title": opening.title, "status": opening.status},
+				ensure_ascii=False,
+				sort_keys=True,
+			),
+		)
+
+	def load_recruiting_opening(self) -> RecruitingOpening | None:
+		value = self.read_local_state(WorkspaceKind.RECRUITING, "selected-opening")
+		if value is None:
+			return None
+		try:
+			payload = json.loads(value)
+			return RecruitingOpening(
+				reference=str(payload["reference"]),
+				title=str(payload["title"]),
+				status=str(payload.get("status", "")),
+			)
+		except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+			return None
