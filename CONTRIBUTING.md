@@ -7,7 +7,7 @@
 ## 开发环境
 
 ```bash
-git clone https://github.com/can4hou6joeng4/boss-agent-cli.git
+git clone https://github.com/faint4/boss-agent-cli.git
 cd boss-agent-cli
 uv sync --all-extras
 uv run pytest tests/ -v
@@ -74,6 +74,19 @@ git diff --check
 
 维护者会使用 squash merge，所以最终 squash 标题也要遵守上面的 commit 格式。
 
+贡献分支必须保持线性历史；请 rebase 到最新 `master`，不要把 `master` 或外部 upstream merge 进功能分支。CI 会拒绝包含 merge commit 的 PR。
+
+## 独立 fork 与 upstream
+
+`faint4/boss-agent-cli` 是本产品的 canonical repository。普通贡献只面向这里的 Issue、ADR、版本和发布计划；不要因为 upstream 发布了新版本就同步 tag、默认配置或整段历史。
+
+维护者选择性评估 upstream 修复时，必须使用 `Upstream sync review` Issue 模板，逐个记录来源 commit、本地影响、验证和 attribution。只允许在短生命周期 `sync/upstream-YYYYMMDD` 分支上使用 `git cherry-pick -x`；禁止 wholesale merge。完整流程见 [Independent fork governance](docs/governance/independent-fork.md)。
+
+```bash
+python scripts/fork_governance.py verify-metadata
+python scripts/fork_governance.py verify-pr --base <base-sha> --head <head-sha>
+```
+
 ## 输出契约（不可破坏）
 
 每个命令必须向 **stdout** 输出 JSON 信封：
@@ -99,7 +112,7 @@ git diff --check
 
 ## 测试理念
 
-- **鼓励 TDD**：先写测试再写实现。CI 覆盖率在 [Codecov](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli) 追踪，基线 80%。
+- **鼓励 TDD**：先写测试再写实现。CI 覆盖率在 [Codecov](https://codecov.io/gh/faint4/boss-agent-cli) 追踪，基线 80%。
 - **Mock 外部 I/O**：`AuthManager`、`BossClient`、`CacheStore`、`AIService` 是 mock 边界，测试不应真正调用 BOSS 直聘 API。
 - **错误路径对等**：每条成功路径至少对应一条错误路径测试（认证过期、限流、参数非法等）。
 
@@ -140,4 +153,4 @@ git diff --check
 
 ## 有问题？
 
-欢迎在 [Discussions](https://github.com/can4hou6joeng4/boss-agent-cli/discussions) 发帖，或在相关 [Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues) 下留言。
+欢迎在 [Discussions](https://github.com/faint4/boss-agent-cli/discussions) 发帖，或在相关 [Issue](https://github.com/faint4/boss-agent-cli/issues) 下留言。

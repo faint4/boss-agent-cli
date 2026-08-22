@@ -19,7 +19,7 @@
 请通过以下方式私下报告：
 
 1. 发送邮件至 can4hou6joeng4@163.com
-2. 或使用 [GitHub Security Advisories](https://github.com/can4hou6joeng4/boss-agent-cli/security/advisories/new) 创建私密报告
+2. 或使用 [GitHub Security Advisories](https://github.com/faint4/boss-agent-cli/security/advisories/new) 创建私密报告
 
 请在报告中包含：
 - 漏洞的详细描述

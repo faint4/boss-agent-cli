@@ -33,7 +33,7 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 
 LABEL org.opencontainers.image.title="boss-agent-cli" \
 	org.opencontainers.image.description="MCP server and read-only CLI surface for boss-agent-cli" \
-	org.opencontainers.image.source="https://github.com/can4hou6joeng4/boss-agent-cli" \
+	org.opencontainers.image.source="https://github.com/faint4/boss-agent-cli" \
 	org.opencontainers.image.licenses="MIT"
 
 ENV PATH="/app/.venv/bin:$PATH" \

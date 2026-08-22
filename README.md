@@ -6,13 +6,13 @@
 
 *🤖 面向真人与 AI Agent 的招聘平台 CLI —— 纯终端向导 · 福利筛选 · 双角色工作流 · JSON 信封。*
 
-[![CI](https://github.com/can4hou6joeng4/boss-agent-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/can4hou6joeng4/boss-agent-cli/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli)
+[![CI](https://github.com/faint4/boss-agent-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/faint4/boss-agent-cli/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/faint4/boss-agent-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/faint4/boss-agent-cli)
 [![Python](https://img.shields.io/badge/Python-≥3.10-3776AB?logo=python&logoColor=white&style=flat-square)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/can4hou6joeng4/boss-agent-cli?style=flat-square)](https://github.com/can4hou6joeng4/boss-agent-cli/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/faint4/boss-agent-cli?style=flat-square)](https://github.com/faint4/boss-agent-cli/releases)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/boss-agent-cli?style=flat-square)](https://pypi.org/project/boss-agent-cli/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/can4hou6joeng4/boss-agent-cli/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/faint4/boss-agent-cli/pulls)
 [![MCP Toplist](https://mcptoplist.com/badge/glama%2Fcan4hou6joeng4%2Fboss-agent-cli.svg)](https://mcptoplist.com/server/glama%2Fcan4hou6joeng4%2Fboss-agent-cli)
 
 [快速上手](docs/getting-started.md) · [Agent 集成](#-agent-集成) · [命令](#-命令) · [排障](docs/troubleshooting.md) · [路线图](ROADMAP.md) · **中文** | [English](README.en.md)
@@ -213,14 +213,14 @@ CLI (Click)
 
 感谢每一位让 boss-agent-cli 变得更好的贡献者，去关注他们！❤️
 
-<a href="https://github.com/can4hou6joeng4/boss-agent-cli/graphs/contributors">
+<a href="https://github.com/faint4/boss-agent-cli/graphs/contributors">
   <img src="./CONTRIBUTORS.svg" alt="贡献者" width="1000" />
 </a>
 
 ## ❤️ 支持
 
-- 如果它帮到了你，最直接的支持是点一个 [Star ⭐](https://github.com/can4hou6joeng4/boss-agent-cli)，或分享给正在找工作的人。
-- 用出问题、有新想法，欢迎提 [Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues)；想动手就直接上 PR。
+- 如果它帮到了你，最直接的支持是点一个 [Star ⭐](https://github.com/faint4/boss-agent-cli)，或分享给正在找工作的人。
+- 用出问题、有新想法，欢迎提 [Issue](https://github.com/faint4/boss-agent-cli/issues)；想动手就直接上 PR。
 - 想看看船队的其他船，欢迎靠泊母港 [bobochang.cn](https://bobochang.cn) 🧭，航海记录在[掘金专栏](https://juejin.cn/user/1187904004821262)。
 
 本项目受益于 [geekgeekrun](https://github.com/geekgeekrun/geekgeekrun) · [boss-cli](https://github.com/jackwener/boss-cli) · [opencli](https://github.com/jackwener/opencli)，一并致谢。

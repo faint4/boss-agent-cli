@@ -6,13 +6,13 @@
 
 *🤖 A recruiting-platform CLI for people and AI agents — terminal wizard · welfare filtering · dual-role workflows · JSON envelopes.*
 
-[![CI](https://github.com/can4hou6joeng4/boss-agent-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/can4hou6joeng4/boss-agent-cli/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli)
+[![CI](https://github.com/faint4/boss-agent-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/faint4/boss-agent-cli/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/faint4/boss-agent-cli/branch/master/graph/badge.svg)](https://codecov.io/gh/faint4/boss-agent-cli)
 [![Python](https://img.shields.io/badge/Python-≥3.10-3776AB?logo=python&logoColor=white&style=flat-square)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/can4hou6joeng4/boss-agent-cli?style=flat-square)](https://github.com/can4hou6joeng4/boss-agent-cli/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/faint4/boss-agent-cli?style=flat-square)](https://github.com/faint4/boss-agent-cli/releases)
 [![PyPI Downloads](https://img.shields.io/pypi/dm/boss-agent-cli?style=flat-square)](https://pypi.org/project/boss-agent-cli/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/can4hou6joeng4/boss-agent-cli/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/faint4/boss-agent-cli/pulls)
 [![MCP Toplist](https://mcptoplist.com/badge/glama%2Fcan4hou6joeng4%2Fboss-agent-cli.svg)](https://mcptoplist.com/server/glama%2Fcan4hou6joeng4%2Fboss-agent-cli)
 
 [Getting Started](docs/getting-started.en.md) · [Agent Integration](#-agent-integration) · [Commands](#-commands) · [Troubleshooting](docs/troubleshooting.en.md) · [Roadmap](ROADMAP.en.md) · [中文](README.md) | **English**
@@ -207,14 +207,14 @@ See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) and [Getting Started](docs/getting-
 
 Thanks to everyone who has made boss-agent-cli better — go follow them! ❤️
 
-<a href="https://github.com/can4hou6joeng4/boss-agent-cli/graphs/contributors">
+<a href="https://github.com/faint4/boss-agent-cli/graphs/contributors">
   <img src="./CONTRIBUTORS.svg" alt="contributors" width="1000" />
 </a>
 
 ## ❤️ Support
 
-- If this project helps you, the most direct support is a [Star ⭐](https://github.com/can4hou6joeng4/boss-agent-cli), or sharing it with someone who is job hunting.
-- Hit a problem or have an idea? Open an [Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues) — or go straight to a PR.
+- If this project helps you, the most direct support is a [Star ⭐](https://github.com/faint4/boss-agent-cli), or sharing it with someone who is job hunting.
+- Hit a problem or have an idea? Open an [Issue](https://github.com/faint4/boss-agent-cli/issues) — or go straight to a PR.
 - Curious about the rest of the fleet? Drop anchor at the home port [bobochang.cn](https://bobochang.cn) 🧭.
 
 This project benefits from [geekgeekrun](https://github.com/geekgeekrun/geekgeekrun) · [boss-cli](https://github.com/jackwener/boss-cli) · [opencli](https://github.com/jackwener/opencli) — thanks to all of them.

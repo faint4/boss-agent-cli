@@ -43,7 +43,7 @@ The project may also require documentation checks when `.github/workflows/docs.y
 Run the full branch protection check first:
 
 ```bash
-gh api repos/can4hou6joeng4/boss-agent-cli/branches/master/protection
+gh api repos/faint4/boss-agent-cli/branches/master/protection
 ```
 
 The response should show:
@@ -62,7 +62,7 @@ The response should show:
 Then verify that the required status check contexts match the CI matrix:
 
 ```bash
-gh api repos/can4hou6joeng4/boss-agent-cli/branches/master/protection \
+gh api repos/faint4/boss-agent-cli/branches/master/protection \
   --jq '.required_status_checks.contexts'
 ```
 

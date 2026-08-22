@@ -76,10 +76,10 @@ After connecting MCP, an agent can run a low-risk chain such as search -> detail
 
 ### Links
 
-- GitHub: https://github.com/can4hou6joeng4/boss-agent-cli
+- GitHub: https://github.com/faint4/boss-agent-cli
 - PyPI: https://pypi.org/project/boss-agent-cli/
-- Roadmap: https://github.com/can4hou6joeng4/boss-agent-cli/blob/master/ROADMAP.md
-- Open issues labeled `good first issue`: https://github.com/can4hou6joeng4/boss-agent-cli/labels/good%20first%20issue
+- Roadmap: https://github.com/faint4/boss-agent-cli/blob/master/ROADMAP.md
+- Open issues labeled `good first issue`: https://github.com/faint4/boss-agent-cli/labels/good%20first%20issue
 
 MIT licensed. Data stays local by default. Questions, PRs, and bug reports are welcome.
 

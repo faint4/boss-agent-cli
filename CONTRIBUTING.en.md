@@ -7,7 +7,7 @@ Before your first contribution, complete the local preflight and developer verif
 ## Development Environment
 
 ```bash
-git clone https://github.com/can4hou6joeng4/boss-agent-cli.git
+git clone https://github.com/faint4/boss-agent-cli.git
 cd boss-agent-cli
 uv sync --all-extras
 uv run pytest tests/ -v
@@ -74,6 +74,19 @@ Before investing in promotion, examples, or integrations, check those passive si
 
 Maintainers will `squash merge`, so the squash title must follow the commit convention above.
 
+Contribution branches must keep linear history. Rebase onto the latest `master`; do not merge `master` or an external upstream into a feature branch. CI rejects pull requests containing merge commits.
+
+## Independent Fork and Upstream
+
+`faint4/boss-agent-cli` is the canonical repository for this product. Normal contributions follow this repository's Issues, ADRs, versions, and release plan; upstream tags, defaults, or history are never copied merely because upstream published them.
+
+When maintainers selectively evaluate an upstream fix, use the `Upstream sync review` Issue form and record each source commit, local impact, verification, and attribution. Apply accepted commits only on a short-lived `sync/upstream-YYYYMMDD` branch with `git cherry-pick -x`; wholesale merges are forbidden. See [Independent fork governance](docs/governance/independent-fork.md).
+
+```bash
+python scripts/fork_governance.py verify-metadata
+python scripts/fork_governance.py verify-pr --base <base-sha> --head <head-sha>
+```
+
 ## Maintainer Docs
 
 - [Release Checklist](docs/maintainer/release-checklist.md)
@@ -117,7 +130,7 @@ On error, the envelope must contain `error.code`, `error.recoverable`, and `erro
 
 ## Testing Philosophy
 
-- **TDD encouraged**: write the test before the implementation. CI coverage is tracked on [Codecov](https://codecov.io/gh/can4hou6joeng4/boss-agent-cli), baseline 80%.
+- **TDD encouraged**: write the test before the implementation. CI coverage is tracked on [Codecov](https://codecov.io/gh/faint4/boss-agent-cli), baseline 80%.
 - **Mock external I/O**: `AuthManager`, `BossClient`, `CacheStore`, and `AIService` are mock boundaries — tests should not hit the real BOSS Zhipin API.
 - **Error-path parity**: for every success path, add at least one error path test (auth expired, rate-limited, invalid param, etc.).
 
@@ -140,4 +153,4 @@ You don't need to write code to help:
 
 ## Questions?
 
-Open a [Discussion](https://github.com/can4hou6joeng4/boss-agent-cli/discussions) or comment on a related [Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues).
+Open a [Discussion](https://github.com/faint4/boss-agent-cli/discussions) or comment on a related [Issue](https://github.com/faint4/boss-agent-cli/issues).

@@ -17,7 +17,7 @@
 分类：Productivity / Job Search
 
 ```markdown
-- [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli) - BOSS Zhipin integration for AI agents, exposing 50 default low-risk MCP tools for read-only job discovery, job detail inspection, local shortlists, resume helpers, and AI interview preparation.
+- [boss-agent-cli](https://github.com/faint4/boss-agent-cli) - BOSS Zhipin integration for AI agents, exposing 50 default low-risk MCP tools for read-only job discovery, job detail inspection, local shortlists, resume helpers, and AI interview preparation.
 ```
 
 ### 2. [awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code)
@@ -25,7 +25,7 @@
 分类：CLI Tools
 
 ```markdown
-- [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli) - Low-risk job-search CLI for BOSS Zhipin agents. 38 top-level commands plus recruiter workflow subcommands, MCP-first integration, local encrypted storage, OpenCode examples, and official-platform handoff for sensitive actions.
+- [boss-agent-cli](https://github.com/faint4/boss-agent-cli) - Low-risk job-search CLI for BOSS Zhipin agents. 38 top-level commands plus recruiter workflow subcommands, MCP-first integration, local encrypted storage, OpenCode examples, and official-platform handoff for sensitive actions.
 ```
 
 ### 3. [awesome-agents](https://github.com/kyrolabs/awesome-agents)
@@ -33,13 +33,13 @@
 分类：Specialized Agents
 
 ```markdown
-- [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli) ![](https://img.shields.io/github/stars/can4hou6joeng4/boss-agent-cli) - Job-search CLI purpose-built for AI agents. BOSS Zhipin integration with 38 top-level commands, recruiter workflow subcommands, 50 MCP tools, JSON envelope output, and local-first encrypted storage.
+- [boss-agent-cli](https://github.com/faint4/boss-agent-cli) ![](https://img.shields.io/github/stars/faint4/boss-agent-cli) - Job-search CLI purpose-built for AI agents. BOSS Zhipin integration with 38 top-level commands, recruiter workflow subcommands, 50 MCP tools, JSON envelope output, and local-first encrypted storage.
 ```
 
 ### 4. [awesome-python-cli](https://github.com/shinokada/awesome-python-cli)
 
 ```markdown
-- [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli) - Agent-friendly BOSS Zhipin CLI with structured JSON output, MCP integration, and a type-safe Python SDK (PEP 561 `py.typed`).
+- [boss-agent-cli](https://github.com/faint4/boss-agent-cli) - Agent-friendly BOSS Zhipin CLI with structured JSON output, MCP integration, and a type-safe Python SDK (PEP 561 `py.typed`).
 ```
 
 ### 5. [awesome-ai-tools](https://github.com/mahseema/awesome-ai-tools)
@@ -47,7 +47,7 @@
 分类：Agents & Automation
 
 ```markdown
-- [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli) - Let your AI agent organize the low-risk parts of a job search. 38 top-level CLI commands + 9 recruiter subcommands + 50 default low-risk MCP tools covering search, detail, local shortlist, interview prep, and AI resume coaching on BOSS Zhipin.
+- [boss-agent-cli](https://github.com/faint4/boss-agent-cli) - Let your AI agent organize the low-risk parts of a job search. 38 top-level CLI commands + 9 recruiter subcommands + 50 default low-risk MCP tools covering search, detail, local shortlist, interview prep, and AI resume coaching on BOSS Zhipin.
 ```
 
 ## 投稿前 Checklist（master 当前状态）
