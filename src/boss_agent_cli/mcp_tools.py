@@ -12,6 +12,7 @@ from typing import Any
 
 from mcp.types import Tool
 
+from boss_agent_cli.application.core_journey_contract import CORE_JOURNEY_CONTRACTS
 from boss_agent_cli.commands.schema import SCHEMA_DATA, _availability_note, _inject_availability
 from boss_agent_cli.compliance import restricted_commands
 from boss_agent_cli.platforms import list_platforms, list_recruiter_platforms
@@ -152,76 +153,14 @@ TOOLS = [
 			"required": [],
 		},
 	),
-	Tool(
-		name="boss_job",
-		description=(
-			"通过与本地 Web 相同的应用合同运行求职主流程；MCP 进程会保留搜索、详情和待确认写入状态"
-		),
-		inputSchema={
-			"type": "object",
-			"properties": {
-				"action": {
-					"type": "string",
-					"enum": [
-						"state", "goal", "search", "cancel-search", "inspect", "shortlist",
-						"prepare-greeting", "confirm", "cancel-write", "run",
-					],
-					"default": "state",
-					"description": "应用合同 action",
-				},
-				"objective": {"type": "string", "description": "goal 的求职目标；省略时使用 keyword"},
-				"keyword": {"type": "string", "description": "goal 的搜索关键词"},
-				"city": {"type": "string", "description": "goal 的城市"},
-				"salary": {"type": "string", "description": "goal 的薪资范围"},
-				"experience": {"type": "string", "description": "goal 的经验要求"},
-				"education": {"type": "string", "description": "goal 的学历要求"},
-				"reference": {"type": "string", "description": "可见职位的应用层 reference"},
-				"shortlisted": {"type": "boolean", "description": "是否加入本地候选清单", "default": True},
-				"message": {"type": "string", "description": "待审核的招呼文本，只在 prepare-greeting 使用"},
-				"intent_id": {"type": "string", "description": "应用层生成的写入意图 ID"},
-				"run_id": {"type": "string", "description": "cancel-search 使用的搜索 run ID"},
-				"timeout": {"type": "number", "description": "等待搜索终态的秒数，最大 120", "default": 30},
-				"steps": {
-					"type": "array",
-					"items": {"type": "object"},
-					"description": "CLI 兼容的进程内 action 数组；MCP 通常逐次调用",
-				},
-			},
-			"required": [],
-		},
-	),
-	Tool(
-		name="boss_hr_journey",
-		description=(
-			"通过与本地 Web 相同的应用合同运行招聘主流程；读取候选人上下文后，"
-			"回复必须先 prepare-reply 再 confirm，MCP 进程仅在内存中保留敏感上下文"
-		),
-		inputSchema={
-			"type": "object",
-			"properties": {
-				"action": {
-					"type": "string",
-					"enum": [
-						"state", "openings", "select-opening", "applicants", "cancel-applicants",
-						"inspect", "prepare-reply", "confirm", "cancel-write", "run",
-					],
-					"default": "state",
-					"description": "共享 Recruiting action",
-				},
-				"reference": {"type": "string", "description": "职位或 Inbound Applicant 引用；可用 $first"},
-				"message": {"type": "string", "description": "待人工确认的单条回复文本"},
-				"intent_id": {"type": "string", "description": "服务端生成的写入意图 ID；可用 $pending"},
-				"run_id": {"type": "string", "description": "要取消的读取 run ID"},
-				"timeout": {"type": "number", "description": "等待 applicants 读取完成的秒数"},
-				"steps": {
-					"type": "array",
-					"items": {"type": "object"},
-					"description": "action=run 时按顺序执行的非 run action 数组",
-				},
-			},
-			"required": [],
-		},
-	),
+	*[
+		Tool(
+			name=contract.mcp_tool_name,
+			description=contract.mcp_description,
+			inputSchema=contract.mcp_input_schema(),
+		)
+		for contract in CORE_JOURNEY_CONTRACTS.values()
+	],
 	Tool(
 		name="boss_status",
 		description="检查 BOSS 直聘登录态",

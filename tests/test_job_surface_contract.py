@@ -261,6 +261,21 @@ def test_invalid_search_input_does_not_start_remote_work() -> None:
 	assert boss.search_calls == 0
 
 
+def test_legacy_goal_defaults_remain_at_the_cli_mcp_surface() -> None:
+	surface, _, _ = _surface()
+	result = surface.invoke({"action": "goal", "keyword": "Python"})
+
+	goal = result["snapshot"]["job_seeking"]["goal"]
+	assert goal == {
+		"objective": "Python",
+		"keyword": "Python",
+		"city": "",
+		"salary": "",
+		"experience": "",
+		"education": "",
+	}
+
+
 def test_unsupported_platform_fails_before_constructing_or_calling_an_adapter(tmp_path: Path, monkeypatch) -> None:
 	with patch(
 		"boss_agent_cli.commands.job.create_job_seeking_surface",

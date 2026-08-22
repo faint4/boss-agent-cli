@@ -26,6 +26,8 @@ Top-level commands and `boss wizard` are two parallel capability surfaces. The s
 
 The Job-Seeking Core Journey also has a shared application-contract entry point: local Web calls the application commands directly, CLI uses `boss job --input-json`, and MCP uses `boss_job`. All three share goal, search, inspect, shortlist, write-intent prepare/confirm/cancel, and error semantics. The shared entry point currently supports `zhipin`; other platforms keep their compatibility commands. A CLI process does not retain visible results or pending write intents after it exits, so put a complete flow in one `action=run` `steps` array. The MCP server retains that state for its process lifetime.
 
+<!-- core-journey-actions:job-seeking --> state, goal, search, cancel-search, inspect, shortlist, prepare-greeting, confirm, cancel-write, run
+
 ```bash
 boss --json job --input-json '{"action":"run","steps":[
   {"action":"goal","objective":"Find a backend role","keyword":"Python","city":"Shanghai"},
@@ -136,6 +138,8 @@ After every page, `<data-dir>/crawl/runs/<run_id>/jobs.json`, `jobs.csv`, and a 
 | `boss hr journey --input-json <JSON>` | Shared Web/CLI/MCP Recruiting journey; reads applicant context on demand and requires `prepare-reply` followed by a single confirmation of the server-owned `intent_id`, or cancellation |
 | `boss hr jobs list/offline/online/detail` | Job listing, detail, and lifecycle management |
 | `boss hr applications` / `hr resume` / `hr chat` / `hr chatmsg` / `hr last-messages` / `hr candidates` / `hr reply` / `hr request-resume` | Candidate applications, resumes, conversations, search, replies, and attached-resume requests |
+
+<!-- core-journey-actions:recruiting --> state, openings, select-opening, applicants, cancel-applicants, inspect, prepare-reply, confirm, cancel-write, run
 
 Migration: `boss hr reply` remains for compatibility and sends immediately. New automation should use `boss hr journey`. Resume, chat, contact, and draft-reply content stays in process memory only and is cleared on exit, cancellation, recovery, or context changes.
 

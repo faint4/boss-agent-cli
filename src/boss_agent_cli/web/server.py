@@ -19,27 +19,14 @@ from urllib.parse import quote, unquote, urlsplit
 
 from boss_agent_cli.application import (
 	Application,
-	CancelRunCommand,
-	CancelWriteIntentCommand,
-	ConnectPlatformSessionCommand,
-	ConfirmWriteIntentCommand,
 	CurrentStateQuery,
 	DomainError,
-	InspectJobCommand,
-	InspectRecruitingProspectCommand,
-	JobSearchGoal,
-	LoadRecruitingOpeningsCommand,
-	LogoutPlatformSessionCommand,
-	PrepareJobGreetingCommand,
-	PrepareRecruitingReplyCommand,
 	RequestContext,
-	SetShortlistedCommand,
-	SelectRecruitingOpeningCommand,
-	StartInboundApplicantsCommand,
-	StartJobSearchCommand,
-	SwitchWorkspaceCommand,
-	UpdateJobSearchGoalCommand,
-	WorkspaceKind,
+)
+from boss_agent_cli.application.core_journey_contract import (
+	WEB_COMMANDS,
+	ContractValidationError,
+	build_web_command,
 )
 from boss_agent_cli.web.auth import StartupAuthenticator
 from boss_agent_cli.web.runtime import create_application
@@ -243,200 +230,13 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 		payload = self._read_json()
 		if payload is None:
 			return
-		request_id = payload.get("request_id")
-		if not isinstance(request_id, str) or not request_id or len(request_id) > 128:
-			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-			return
-		command: (
-			SwitchWorkspaceCommand
-			| ConnectPlatformSessionCommand
-			| LogoutPlatformSessionCommand
-			| UpdateJobSearchGoalCommand
-			| StartJobSearchCommand
-			| CancelRunCommand
-			| InspectJobCommand
-			| SetShortlistedCommand
-			| PrepareJobGreetingCommand
-			| PrepareRecruitingReplyCommand
-			| ConfirmWriteIntentCommand
-			| CancelWriteIntentCommand
-			| LoadRecruitingOpeningsCommand
-			| SelectRecruitingOpeningCommand
-			| StartInboundApplicantsCommand
-			| InspectRecruitingProspectCommand
-		)
-		if path == "/api/v1/commands/switch-workspace":
-			if set(payload) != {"request_id", "workspace"} or not isinstance(payload["workspace"], str):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			try:
-				command = SwitchWorkspaceCommand(workspace=WorkspaceKind(payload["workspace"]))
-			except ValueError:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-		elif path == "/api/v1/commands/connect-platform-session":
-			if set(payload) != {"request_id"}:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = ConnectPlatformSessionCommand()
-		elif path == "/api/v1/commands/logout-platform-session":
-			if set(payload) != {"request_id"}:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = LogoutPlatformSessionCommand()
-		elif path == "/api/v1/commands/update-job-search-goal":
-			expected = {
-				"request_id",
-				"objective",
-				"keyword",
-				"city",
-				"salary",
-				"experience",
-				"education",
-			}
-			if set(payload) != expected or any(
-				not isinstance(payload[field], str) for field in expected - {"request_id"}
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = UpdateJobSearchGoalCommand(
-				goal=JobSearchGoal(
-					objective=str(payload["objective"]),
-					keyword=str(payload["keyword"]),
-					city=str(payload["city"]),
-					salary=str(payload["salary"]),
-					experience=str(payload["experience"]),
-					education=str(payload["education"]),
-				)
-			)
-		elif path == "/api/v1/commands/start-job-search":
-			if set(payload) != {"request_id"}:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = StartJobSearchCommand()
-		elif path == "/api/v1/commands/load-recruiting-openings":
-			if set(payload) != {"request_id"}:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = LoadRecruitingOpeningsCommand()
-		elif path == "/api/v1/commands/select-recruiting-opening":
-			reference = payload.get("reference")
-			if (
-				set(payload) != {"request_id", "reference"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = SelectRecruitingOpeningCommand(reference=reference)
-		elif path == "/api/v1/commands/start-inbound-applicants":
-			if set(payload) != {"request_id"}:
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = StartInboundApplicantsCommand()
-		elif path == "/api/v1/commands/inspect-recruiting-prospect":
-			reference = payload.get("reference")
-			if (
-				set(payload) != {"request_id", "reference"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = InspectRecruitingProspectCommand(reference=reference)
-		elif path == "/api/v1/commands/cancel-run":
-			run_id = payload.get("run_id")
-			if (
-				set(payload) != {"request_id", "run_id"}
-				or not isinstance(run_id, str)
-				or not run_id
-				or len(run_id) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = CancelRunCommand(run_id=run_id)
-		elif path == "/api/v1/commands/inspect-job":
-			reference = payload.get("reference")
-			if (
-				set(payload) != {"request_id", "reference"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = InspectJobCommand(reference=reference)
-		elif path == "/api/v1/commands/set-shortlisted":
-			reference = payload.get("reference")
-			if (
-				set(payload) != {"request_id", "reference", "shortlisted"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-				or not isinstance(payload.get("shortlisted"), bool)
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = SetShortlistedCommand(
-				reference=reference,
-				shortlisted=bool(payload["shortlisted"]),
-			)
-		elif path == "/api/v1/commands/prepare-job-greeting":
-			reference = payload.get("reference")
-			message = payload.get("message")
-			if (
-				set(payload) != {"request_id", "reference", "message"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-				or not isinstance(message, str)
-				or not message.strip()
-				or len(message) > 1000
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = PrepareJobGreetingCommand(reference=reference, message=message)
-		elif path == "/api/v1/commands/prepare-recruiting-reply":
-			reference = payload.get("reference")
-			message = payload.get("message")
-			if (
-				set(payload) != {"request_id", "reference", "message"}
-				or not isinstance(reference, str)
-				or not reference
-				or len(reference) > 128
-				or not isinstance(message, str)
-				or not message.strip()
-				or len(message) > 1000
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = PrepareRecruitingReplyCommand(reference=reference, message=message)
-		elif path == "/api/v1/write-intents/confirm":
-			intent_id = payload.get("intent_id")
-			if (
-				set(payload) != {"request_id", "intent_id"}
-				or not isinstance(intent_id, str)
-				or not intent_id
-				or len(intent_id) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = ConfirmWriteIntentCommand(intent_id=intent_id)
-		elif path == "/api/v1/write-intents/cancel":
-			intent_id = payload.get("intent_id")
-			if (
-				set(payload) != {"request_id", "intent_id"}
-				or not isinstance(intent_id, str)
-				or not intent_id
-				or len(intent_id) > 128
-			):
-				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
-				return
-			command = CancelWriteIntentCommand(intent_id=intent_id)
-		else:
+		if path not in WEB_COMMANDS:
 			self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found")
+			return
+		try:
+			command = build_web_command(path, payload)
+		except ContractValidationError:
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
 			return
 		try:
 			result = self.owner.application.execute(

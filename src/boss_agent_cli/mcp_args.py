@@ -9,9 +9,18 @@
 import json
 from typing import Any
 
+from boss_agent_cli.application.core_journey_contract import CORE_JOURNEY_BY_MCP_TOOL
+
 
 def _build_args(tool_name: str, arguments: dict[str, Any]) -> list[str]:
 	"""根据 tool name 和参数构建 CLI 参数列表。"""
+	if contract := CORE_JOURNEY_BY_MCP_TOOL.get(tool_name):
+		return [
+			*contract.cli_command,
+			"--input-json",
+			json.dumps(arguments, ensure_ascii=False, separators=(",", ":")),
+		]
+
 	name = tool_name.replace("boss_", "")
 
 	if name == "wizard":
@@ -31,12 +40,6 @@ def _build_args(tool_name: str, arguments: dict[str, Any]) -> list[str]:
 		if arguments.get("max_retries") is not None:
 			args.extend(["--max-retries", str(arguments["max_retries"])])
 		return args
-
-	if name == "job":
-		return ["job", "--input-json", json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))]
-
-	if name == "hr_journey":
-		return ["hr", "journey", "--input-json", json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))]
 
 	if name == "search":
 		args = [name, arguments["query"]]

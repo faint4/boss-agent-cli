@@ -8,6 +8,7 @@ from typing import Any
 import click
 
 from boss_agent_cli.application import DomainError
+from boss_agent_cli.application.core_journey_contract import RECRUITING_CONTRACT
 from boss_agent_cli.application.recruiting_surface import domain_error_payload
 from boss_agent_cli.output import emit_error, emit_success
 from boss_agent_cli.recruiting_runtime import create_recruiting_surface
@@ -16,8 +17,8 @@ from boss_agent_cli.recruiting_runtime import create_recruiting_surface
 @click.command("journey")
 @click.option(
 	"--input-json",
-	default='{"action":"state"}',
-	help="共享招聘 action，或含 steps 的 run；不传时查询当前状态",
+	default=RECRUITING_CONTRACT.default_payload_json,
+	help=RECRUITING_CONTRACT.cli_option_help,
 )
 @click.pass_context
 def recruiting_journey_cmd(ctx: click.Context, input_json: str) -> None:

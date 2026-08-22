@@ -7,11 +7,8 @@ query used by the local Web surface.
 
 from __future__ import annotations
 
-import dataclasses
 import time
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
-from enum import Enum
 
 from boss_agent_cli.application.contracts import (
 	ApplicationStateSnapshot,
@@ -28,50 +25,17 @@ from boss_agent_cli.application.contracts import (
 	SelectRecruitingOpeningCommand,
 	StartInboundApplicantsCommand,
 )
+from boss_agent_cli.application.core_journey_contract import (
+	RECRUITING_CONTRACT,
+	ContractValidationError,
+	domain_error_payload,
+	json_value,
+)
 from boss_agent_cli.application.module import Application
 
 
-RECRUITING_ACTIONS = (
-	"state",
-	"openings",
-	"select-opening",
-	"applicants",
-	"cancel-applicants",
-	"inspect",
-	"prepare-reply",
-	"confirm",
-	"cancel-write",
-	"run",
-)
+RECRUITING_ACTIONS = RECRUITING_CONTRACT.action_names
 _TERMINAL_RUN_STATES = frozenset({"cancelled", "completed", "recovery"})
-_ACTION_FIELDS = {
-	"state": frozenset({"action"}),
-	"openings": frozenset({"action"}),
-	"select-opening": frozenset({"action", "reference"}),
-	"applicants": frozenset({"action", "timeout"}),
-	"cancel-applicants": frozenset({"action", "run_id"}),
-	"inspect": frozenset({"action", "reference"}),
-	"prepare-reply": frozenset({"action", "reference", "message"}),
-	"confirm": frozenset({"action", "intent_id"}),
-	"cancel-write": frozenset({"action", "intent_id"}),
-	"run": frozenset({"action", "steps"}),
-}
-
-
-def json_value(value: object) -> object:
-	"""Convert application values to a stable JSON-compatible representation."""
-
-	if isinstance(value, Enum):
-		return value.value
-	if isinstance(value, datetime):
-		return value.isoformat()
-	if dataclasses.is_dataclass(value) and not isinstance(value, type):
-		return {key: json_value(item) for key, item in dataclasses.asdict(value).items()}
-	if isinstance(value, Mapping):
-		return {str(key): json_value(item) for key, item in value.items()}
-	if isinstance(value, (list, tuple)):
-		return [json_value(item) for item in value]
-	return value
 
 
 class RecruitingSurface:
@@ -105,17 +69,18 @@ class RecruitingSurface:
 		)
 
 	@staticmethod
-	def _required_text(
-		payload: Mapping[str, object],
-		field: str,
-		context: RequestContext,
-		*,
-		max_length: int = 128,
-	) -> str:
-		value = payload.get(field)
-		if not isinstance(value, str) or not value.strip() or len(value) > max_length:
-			raise RecruitingSurface._invalid(context, f"{field} is required")
-		return value
+	def _with_legacy_defaults(payload: Mapping[str, object]) -> dict[str, object]:
+		"""Keep pre-catalog CLI/MCP conveniences at the adapter seam."""
+
+		normalized = dict(payload)
+		normalized.setdefault("action", "state")
+		steps = normalized.get("steps")
+		if normalized["action"] == "run" and isinstance(steps, Sequence) and not isinstance(steps, (str, bytes)):
+			normalized["steps"] = [
+				RecruitingSurface._with_legacy_defaults(step) if isinstance(step, Mapping) else step
+				for step in steps
+			]
+		return normalized
 
 	def _wait_for_applicants(self, context: RequestContext, timeout: float) -> ApplicationStateSnapshot:
 		deadline = time.monotonic() + max(0.01, min(timeout, 120.0))
@@ -134,7 +99,7 @@ class RecruitingSurface:
 		)
 
 	def _opening_reference(self, payload: Mapping[str, object], context: RequestContext) -> str:
-		reference = self._required_text(payload, "reference", context)
+		reference = str(payload["reference"])
 		if reference != "$first":
 			return reference
 		state = self.application.query(CurrentStateQuery(), context).recruiting
@@ -143,7 +108,7 @@ class RecruitingSurface:
 		return state.openings[0].reference
 
 	def _prospect_reference(self, payload: Mapping[str, object], context: RequestContext) -> str:
-		reference = self._required_text(payload, "reference", context)
+		reference = str(payload["reference"])
 		if reference != "$first":
 			return reference
 		state = self.application.query(CurrentStateQuery(), context).recruiting
@@ -152,7 +117,7 @@ class RecruitingSurface:
 		return state.applicants[0].reference
 
 	def _intent_id(self, payload: Mapping[str, object], context: RequestContext) -> str:
-		intent_id = self._required_text(payload, "intent_id", context)
+		intent_id = str(payload["intent_id"])
 		if intent_id != "$pending":
 			return intent_id
 		intent = self.application.query(CurrentStateQuery(), context).pending_write_intent
@@ -161,43 +126,20 @@ class RecruitingSurface:
 		return intent.intent_id
 
 	def _validate_action(self, payload: Mapping[str, object], context: RequestContext) -> str:
-		action_value = payload.get("action", "state")
-		if not isinstance(action_value, str) or action_value not in RECRUITING_ACTIONS:
-			raise self._invalid(context, "action is not supported")
-		unexpected = set(payload) - _ACTION_FIELDS[action_value]
-		if unexpected:
-			raise self._invalid(
-				context,
-				f"unexpected fields for {action_value}: {', '.join(sorted(unexpected))}",
-			)
-		if action_value in {"select-opening", "inspect"}:
-			self._required_text(payload, "reference", context)
-		elif action_value == "prepare-reply":
-			self._required_text(payload, "reference", context)
-			self._required_text(payload, "message", context, max_length=1000)
-		elif action_value in {"confirm", "cancel-write"}:
-			self._required_text(payload, "intent_id", context)
-		elif action_value == "cancel-applicants":
-			self._required_text(payload, "run_id", context)
-		elif action_value == "applicants":
-			timeout_value = payload.get("timeout", 30)
-			if not isinstance(timeout_value, (int, float)) or isinstance(timeout_value, bool):
-				raise self._invalid(context, "timeout must be a number")
-		return action_value
+		try:
+			return RECRUITING_CONTRACT.validate_action(payload)
+		except ContractValidationError as exc:
+			raise self._invalid(context, str(exc)) from exc
 
 	def invoke(self, payload: Mapping[str, object]) -> dict[str, object]:
 		"""Invoke one transport-neutral action and return its canonical result."""
 
 		context = self._context()
+		payload = self._with_legacy_defaults(payload)
 		action = self._validate_action(payload, context)
 		if action == "run":
-			steps = payload.get("steps")
-			if not isinstance(steps, Sequence) or isinstance(steps, (str, bytes)) or not steps:
-				raise self._invalid(context, "steps must be a non-empty array")
-			for step in steps:
-				if not isinstance(step, Mapping) or step.get("action") == "run":
-					raise self._invalid(context, "each step must be a non-run action object")
-				self._validate_action(step, context)
+			steps = payload["steps"]
+			assert isinstance(steps, Sequence) and not isinstance(steps, (str, bytes))
 			results = [self.invoke(step) for step in steps]
 			return {
 				"action": action,
@@ -219,13 +161,12 @@ class RecruitingSurface:
 			resource_ref = result.resource_ref
 		elif action == "applicants":
 			timeout_value = payload.get("timeout", 30)
-			if not isinstance(timeout_value, (int, float)) or isinstance(timeout_value, bool):
-				raise self._invalid(context, "timeout must be a number")
+			assert isinstance(timeout_value, (int, float)) and not isinstance(timeout_value, bool)
 			result = self.application.execute(StartInboundApplicantsCommand(), context)
 			resource_ref = result.resource_ref
 			snapshot = self._wait_for_applicants(context, float(timeout_value))
 		elif action == "cancel-applicants":
-			run_id = self._required_text(payload, "run_id", context)
+			run_id = str(payload["run_id"])
 			result = self.application.execute(CancelRunCommand(run_id=run_id), context)
 			snapshot = result.snapshot
 			resource_ref = result.resource_ref
@@ -236,7 +177,7 @@ class RecruitingSurface:
 			resource_ref = result.resource_ref
 		elif action == "prepare-reply":
 			reference = self._prospect_reference(payload, context)
-			message = self._required_text(payload, "message", context, max_length=1000)
+			message = str(payload["message"])
 			result = self.application.execute(PrepareRecruitingReplyCommand(reference, message), context)
 			snapshot = result.snapshot
 			resource_ref = result.resource_ref
@@ -252,18 +193,4 @@ class RecruitingSurface:
 			resource_ref = result.resource_ref
 
 		return {"action": action, "snapshot": json_value(snapshot), "resource_ref": resource_ref}
-
-
-def domain_error_payload(error: DomainError) -> dict[str, object]:
-	"""Use one error shape for CLI and MCP transport envelopes."""
-
-	return {
-		"code": error.code.value,
-		"message": error.message,
-		"recoverable": error.recoverable,
-		"recovery_action": error.recovery_action,
-		"correlation_id": error.correlation_id,
-	}
-
-
 __all__ = ["RECRUITING_ACTIONS", "RecruitingSurface", "domain_error_payload", "json_value"]
