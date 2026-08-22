@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { JobJourney, RecruitingJourney, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
+import App, { JobJourney, RecruitingJourney, RunRecoveryPanel, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -50,6 +50,38 @@ describe("local Web shell states", () => {
     const markup = renderPanel("recovery", { ...baseSnapshot, platform_session: "recovery" });
     expect(markup).toContain("任务已安全暂停");
     expect(markup).toContain("系统不会自动继续写入");
+  });
+
+  it("renders distinct server-authorized Run recovery controls", () => {
+    const markup = renderToStaticMarkup(
+      <RunRecoveryPanel
+        snapshot={{
+          ...baseSnapshot,
+          platform_session: "connected",
+          active_run: {
+            run_id: "run-19",
+            state: "recovery_required",
+            progress: 45,
+            wait_reason: "platform_risk_control",
+            error: {
+              code: "PLATFORM_RISK_CONTROL",
+              message: "BOSS 要求人工验证",
+              recoverable: true,
+              recovery_action: "先在 BOSS 官网完成验证",
+              correlation_id: "request-19",
+            },
+            permitted_next_actions: ["open-official-boss", "resume", "discard"],
+          },
+        }}
+        busy={false}
+        onResume={() => undefined}
+        onDiscard={() => undefined}
+      />,
+    );
+    expect(markup).toContain("打开 BOSS 官网处理验证");
+    expect(markup).toContain("恢复只读任务");
+    expect(markup).toContain("丢弃此 Run");
+    expect(markup).toContain("旧的发送确认不会恢复");
   });
 
   it("renders a server error with an explicit retry", () => {

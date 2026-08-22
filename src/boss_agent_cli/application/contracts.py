@@ -130,6 +130,16 @@ class CancelRunCommand:
 
 
 @dataclass(frozen=True)
+class ResumeRunCommand:
+	run_id: str
+
+
+@dataclass(frozen=True)
+class DiscardRunCommand:
+	run_id: str
+
+
+@dataclass(frozen=True)
 class InspectJobCommand:
 	reference: str
 
@@ -189,6 +199,8 @@ ApplicationCommand = (
 	| UpdateJobSearchGoalCommand
 	| StartJobSearchCommand
 	| CancelRunCommand
+	| ResumeRunCommand
+	| DiscardRunCommand
 	| InspectJobCommand
 	| SetShortlistedCommand
 	| PrepareJobGreetingCommand
@@ -279,11 +291,26 @@ class RecruitingState:
 
 
 @dataclass(frozen=True)
+class RunResult:
+	category: str
+	item_count: int = 0
+	remote_write_may_have_occurred: bool = False
+
+
+@dataclass(frozen=True)
 class RunSummary:
 	run_id: str
 	state: str
 	progress: int | None = None
 	wait_reason: str | None = None
+	workspace: WorkspaceKind | None = None
+	kind: str = ""
+	phase: str = ""
+	created_at: datetime | None = None
+	updated_at: datetime | None = None
+	result: RunResult | None = None
+	error: DomainErrorDetails | None = None
+	permitted_next_actions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

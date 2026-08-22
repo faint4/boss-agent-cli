@@ -8,13 +8,19 @@ import sqlite3
 import sys
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from boss_agent_cli.application import (
 	ApplicationEvent,
+	DomainErrorDetails,
+	ErrorCode,
 	JobSearchGoal,
 	JobSummary,
 	RecruitingOpening,
+	RunEventKind,
+	RunResult,
+	RunSummary,
 	WorkspaceKind,
 )
 
@@ -98,6 +104,14 @@ class WorkspaceRegistry:
 			with sqlite3.connect(paths.database) as connection:
 				connection.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 				connection.execute("CREATE TABLE IF NOT EXISTS local_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+				connection.execute(
+					"CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, snapshot TEXT NOT NULL, updated_at TEXT NOT NULL)"
+				)
+				connection.execute(
+					"CREATE TABLE IF NOT EXISTS run_events ("
+					"run_id TEXT NOT NULL, cursor INTEGER NOT NULL, event TEXT NOT NULL, "
+					"PRIMARY KEY (run_id, cursor))"
+				)
 				connection.execute("INSERT OR REPLACE INTO metadata(key, value) VALUES ('schema_version', '1')")
 				connection.commit()
 			self._runtime.setdefault(workspace, _RuntimeState())
@@ -153,8 +167,179 @@ class WorkspaceRegistry:
 			row = connection.execute("SELECT value FROM local_state WHERE key = ?", (key,)).fetchone()
 		return None if row is None else str(row[0])
 
-	def read_events(self, run_id: str) -> tuple[ApplicationEvent, ...]:
-		raise KeyError(run_id)
+	@staticmethod
+	def _run_payload(summary: RunSummary) -> dict[str, object]:
+		return {
+			"run_id": summary.run_id,
+			"state": summary.state,
+			"progress": summary.progress,
+			"wait_reason": summary.wait_reason,
+			"workspace": summary.workspace.value if summary.workspace is not None else None,
+			"kind": summary.kind,
+			"phase": summary.phase,
+			"created_at": summary.created_at.isoformat() if summary.created_at is not None else None,
+			"updated_at": summary.updated_at.isoformat() if summary.updated_at is not None else None,
+			"result": (
+				{
+					"category": summary.result.category,
+					"item_count": summary.result.item_count,
+					"remote_write_may_have_occurred": summary.result.remote_write_may_have_occurred,
+				}
+				if summary.result is not None
+				else None
+			),
+			"error": (
+				{
+					"code": summary.error.code.value,
+					"message": summary.error.message,
+					"recoverable": summary.error.recoverable,
+					"recovery_action": summary.error.recovery_action,
+					"correlation_id": summary.error.correlation_id,
+					"field_errors": summary.error.field_errors,
+				}
+				if summary.error is not None
+				else None
+			),
+			"permitted_next_actions": summary.permitted_next_actions,
+		}
+
+	@staticmethod
+	def _run_from_payload(payload: dict[str, object]) -> RunSummary:
+		result_payload = payload.get("result")
+		error_payload = payload.get("error")
+		result = None
+		if isinstance(result_payload, dict):
+			result = RunResult(
+				category=str(result_payload.get("category", "")),
+				item_count=int(result_payload.get("item_count", 0)),
+				remote_write_may_have_occurred=bool(result_payload.get("remote_write_may_have_occurred", False)),
+			)
+		error = None
+		if isinstance(error_payload, dict):
+			field_values = error_payload.get("field_errors", ())
+			field_errors = (
+				tuple((str(item[0]), str(item[1])) for item in field_values if isinstance(item, (list, tuple)) and len(item) == 2)
+				if isinstance(field_values, (list, tuple))
+				else ()
+			)
+			error = DomainErrorDetails(
+				code=ErrorCode(str(error_payload["code"])),
+				message=str(error_payload.get("message", "")),
+				recoverable=bool(error_payload.get("recoverable", False)),
+				recovery_action=(
+					str(error_payload["recovery_action"]) if error_payload.get("recovery_action") is not None else None
+				),
+				correlation_id=str(error_payload.get("correlation_id", "")),
+				field_errors=field_errors,
+			)
+		workspace_value = payload.get("workspace")
+		created_value = payload.get("created_at")
+		updated_value = payload.get("updated_at")
+		progress_value = payload.get("progress")
+		actions_value = payload.get("permitted_next_actions", ())
+		return RunSummary(
+			run_id=str(payload["run_id"]),
+			state=str(payload["state"]),
+			progress=int(str(progress_value)) if progress_value is not None else None,
+			wait_reason=str(payload["wait_reason"]) if payload.get("wait_reason") is not None else None,
+			workspace=WorkspaceKind(str(workspace_value)) if workspace_value is not None else None,
+			kind=str(payload.get("kind", "")),
+			phase=str(payload.get("phase", "")),
+			created_at=datetime.fromisoformat(str(created_value)) if created_value is not None else None,
+			updated_at=datetime.fromisoformat(str(updated_value)) if updated_value is not None else None,
+			result=result,
+			error=error,
+			permitted_next_actions=(
+				tuple(map(str, actions_value)) if isinstance(actions_value, (list, tuple)) else ()
+			),
+		)
+
+	def save_run(self, summary: RunSummary) -> None:
+		if summary.workspace is None or summary.updated_at is None:
+			raise ValueError("persisted run requires workspace and updated_at")
+		paths = self.ensure_workspace(summary.workspace)
+		payload = json.dumps(self._run_payload(summary), ensure_ascii=False, sort_keys=True)
+		with sqlite3.connect(paths.database) as connection:
+			connection.execute(
+				"INSERT OR REPLACE INTO runs(run_id, snapshot, updated_at) VALUES (?, ?, ?)",
+				(summary.run_id, payload, summary.updated_at.isoformat()),
+			)
+			connection.execute(
+				"INSERT OR REPLACE INTO local_state(key, value) VALUES ('active-run-id', ?)",
+				(summary.run_id,),
+			)
+			connection.commit()
+
+	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None:
+		paths = self.ensure_workspace(workspace)
+		with sqlite3.connect(paths.database) as connection:
+			marker = connection.execute(
+				"SELECT value FROM local_state WHERE key = 'active-run-id'"
+			).fetchone()
+			if marker is not None:
+				if not str(marker[0]):
+					return None
+				row = connection.execute("SELECT snapshot FROM runs WHERE run_id = ?", (str(marker[0]),)).fetchone()
+			else:
+				# Compatibility for workspaces created before the active Run marker existed.
+				row = connection.execute("SELECT snapshot FROM runs ORDER BY updated_at DESC LIMIT 1").fetchone()
+		if row is None:
+			return None
+		return self._run_from_payload(json.loads(str(row[0])))
+
+	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None:
+		paths = self.ensure_workspace(workspace)
+		payload = json.dumps(
+			{
+				"cursor": event.cursor,
+				"run_id": event.run_id,
+				"kind": event.kind.value,
+				"occurred_at": event.occurred_at.isoformat(),
+				"payload": event.payload,
+			},
+			ensure_ascii=False,
+			sort_keys=True,
+		)
+		with sqlite3.connect(paths.database) as connection:
+			connection.execute(
+				"INSERT OR REPLACE INTO run_events(run_id, cursor, event) VALUES (?, ?, ?)",
+				(event.run_id, event.cursor, payload),
+			)
+			connection.commit()
+
+	def read_events(self, workspace: WorkspaceKind, run_id: str) -> tuple[ApplicationEvent, ...]:
+		paths = self.ensure_workspace(workspace)
+		with sqlite3.connect(paths.database) as connection:
+			rows = connection.execute(
+				"SELECT event FROM run_events WHERE run_id = ? ORDER BY cursor",
+				(run_id,),
+			).fetchall()
+		if not rows:
+			raise KeyError(run_id)
+		events = []
+		for row in rows:
+			payload = json.loads(str(row[0]))
+			events.append(
+				ApplicationEvent(
+					cursor=int(payload["cursor"]),
+					run_id=str(payload["run_id"]),
+					kind=RunEventKind(str(payload["kind"])),
+					occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+					payload=tuple(tuple(item) for item in payload.get("payload", ())),
+				)
+			)
+		return tuple(events)
+
+	def discard_run(self, workspace: WorkspaceKind, run_id: str) -> None:
+		paths = self.ensure_workspace(workspace)
+		with sqlite3.connect(paths.database) as connection:
+			connection.execute("DELETE FROM run_events WHERE run_id = ?", (run_id,))
+			connection.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+			connection.execute(
+				"UPDATE local_state SET value = '' WHERE key = 'active-run-id' AND value = ?",
+				(run_id,),
+			)
+			connection.commit()
 
 	def save_job_search_goal(self, goal: JobSearchGoal) -> None:
 		self.write_local_state(

@@ -52,6 +52,10 @@ describe("deriveView", () => {
         },
       }),
     ).toBe("recovery");
+	 expect(deriveView({
+		 ...emptySnapshot,
+		 active_run: { run_id: "run-19", state: "recovery_required", progress: 50, wait_reason: "rate_limited" },
+	 })).toBe("recovery");
   });
 
   it("renders a non-recoverable server error as error", () => {
