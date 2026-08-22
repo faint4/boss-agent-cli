@@ -13,6 +13,11 @@ from boss_agent_cli.application.contracts import (
 	ApplicationCommand,
 	ApplicationEvent,
 	ApplicationStateSnapshot,
+	AIAssistanceKind,
+	AIAssistanceRequest,
+	AIAssistanceState,
+	AIProviderConfiguration,
+	AISuggestion,
 	CancelRunCommand,
 	CancelWriteIntentCommand,
 	CommandResult,
@@ -21,6 +26,7 @@ from boss_agent_cli.application.contracts import (
 	CurrentStateQuery,
 	DomainError,
 	DomainErrorDetails,
+	DiscardAISuggestionCommand,
 	DiscardRunCommand,
 	ErrorCode,
 	InboundApplicant,
@@ -37,6 +43,7 @@ from boss_agent_cli.application.contracts import (
 	PlatformSessionState,
 	PrepareJobGreetingCommand,
 	PrepareRecruitingReplyCommand,
+	RequestAIAssistanceCommand,
 	RequestContext,
 	ResumeRunCommand,
 	RecruitingApplicantBatch,
@@ -64,6 +71,7 @@ class WorkspaceStore(Protocol):
 	def sensitive_content_present(self, workspace: WorkspaceKind) -> bool: ...
 	def last_transition(self, local_session_id: str) -> str | None: ...
 	def save_run(self, summary: RunSummary) -> None: ...
+	def save_run_event(self, summary: RunSummary, event: ApplicationEvent) -> None: ...
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None: ...
 	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None: ...
 	def read_events(self, workspace: WorkspaceKind, run_id: str) -> tuple[ApplicationEvent, ...]: ...
@@ -117,6 +125,11 @@ class BossAdapter(Protocol):
 	) -> RecruitingProspectContext: ...
 
 
+class AIAssistant(Protocol):
+	def configuration(self) -> AIProviderConfiguration: ...
+	def suggest(self, request: AIAssistanceRequest) -> str: ...
+
+
 @dataclass(frozen=True)
 class _WriteIntent:
 	summary: WriteIntentSummary
@@ -142,6 +155,7 @@ class Application:
 		workspace_store: WorkspaceStore,
 		credential_store: CredentialStore,
 		boss: BossAdapter,
+		ai: AIAssistant | None = None,
 		run_id_factory: Callable[[], str] | None = None,
 		intent_id_factory: Callable[[], str] | None = None,
 		clock: Callable[[], datetime] | None = None,
@@ -149,6 +163,7 @@ class Application:
 		self._workspace_store = workspace_store
 		self._credential_store = credential_store
 		self._boss = boss
+		self._ai = ai
 		self._run_id_factory = run_id_factory or (lambda: f"search-{secrets.token_urlsafe(12)}")
 		self._intent_id_factory = intent_id_factory or (lambda: f"write-{secrets.token_urlsafe(18)}")
 		self._clock = clock or (lambda: datetime.now(timezone.utc))
@@ -165,6 +180,7 @@ class Application:
 		self._selected_prospect: RecruitingProspectContext | None = None
 		self._last_error: DomainErrorDetails | None = None
 		self._write_intent: _WriteIntent | None = None
+		self._ai_suggestion: AISuggestion | None = None
 
 	def _session_revision(self, workspace: WorkspaceKind) -> str:
 		provider = getattr(self._credential_store, "session_revision", None)
@@ -222,28 +238,35 @@ class Application:
 		with self._lock:
 			self._applicant_results = ()
 			self._selected_prospect = None
+			if (
+				self._ai_suggestion is not None
+				and self._ai_suggestion.kind is AIAssistanceKind.RECRUITING_REPLY_DRAFT
+			):
+				self._ai_suggestion = None
 
-	def _emit(self, run_id: str, kind: RunEventKind, **payload: object) -> None:
+	def _ai_configuration(self) -> AIProviderConfiguration:
+		if self._ai is None:
+			return AIProviderConfiguration(configured=False)
+		try:
+			return self._ai.configuration()
+		except (OSError, RuntimeError, TypeError, ValueError):
+			return AIProviderConfiguration(configured=False)
+
+	def _transition_run(self, summary: RunSummary, kind: RunEventKind, **payload: object) -> None:
 		with self._lock:
-			events = self._events.setdefault(run_id, [])
+			events = self._events.setdefault(summary.run_id, [])
 			event = ApplicationEvent(
-					cursor=len(events) + 1,
-					run_id=run_id,
-					kind=kind,
-					occurred_at=self._clock(),
-					payload=tuple(payload.items()),
+				cursor=len(events) + 1,
+				run_id=summary.run_id,
+				kind=kind,
+				occurred_at=self._clock(),
+				payload=tuple(payload.items()),
 			)
+			self._workspace_store.save_run_event(summary, event)
+			self._active_run = summary
+			if summary.workspace is not None:
+				self._run_workspace = summary.workspace
 			events.append(event)
-			if self._active_run is not None and self._active_run.run_id == run_id:
-				workspace = self._active_run.workspace or self._run_workspace
-				if workspace is not None:
-					self._workspace_store.append_event(workspace, event)
-
-	def _set_active_run(self, summary: RunSummary) -> None:
-		self._active_run = summary
-		if summary.workspace is not None:
-			self._run_workspace = summary.workspace
-		self._workspace_store.save_run(summary)
 
 	def _adapter_error(self, failure: BossAdapterFailure, correlation_id: str) -> DomainErrorDetails:
 		code = failure.code if failure.code in _RECOVERY_ACTIONS else ErrorCode.ADAPTER_UNAVAILABLE
@@ -280,21 +303,23 @@ class Application:
 						known.update({item.reference: item for item in batch.items})
 						self._job_results = tuple(known.values())
 						assert self._active_run is not None
-						self._set_active_run(
+						result_count = len(self._job_results)
+						self._transition_run(
 							replace(
 								self._active_run,
 								phase="fetching",
 								progress=progress,
 								updated_at=self._clock(),
-							)
+							),
+							RunEventKind.PROGRESS,
+							progress=progress,
+							result_count=result_count,
 						)
-						result_count = len(self._job_results)
-					self._emit(run_id, RunEventKind.PROGRESS, progress=progress, result_count=result_count)
 				with self._lock:
 					current_progress = (self._active_run.progress if self._active_run else 0) or 0
 					state = "stopped" if cancel_event.is_set() else "completed"
 					assert self._active_run is not None
-					self._set_active_run(
+					self._transition_run(
 						replace(
 							self._active_run,
 							state=state,
@@ -305,9 +330,10 @@ class Application:
 							permitted_next_actions=("start-new-run", "discard")
 							if state == "completed"
 							else ("resume", "discard"),
-						)
+						),
+						RunEventKind.STATE_CHANGED,
+						state=state,
 					)
-				self._emit(run_id, RunEventKind.STATE_CHANGED, state=state)
 			except BossAdapterFailure as failure:
 				self._record_search_failure(run_id, self._adapter_error(failure, correlation_id))
 			except (OSError, RuntimeError) as failure:
@@ -322,7 +348,8 @@ class Application:
 	def _record_search_failure(self, run_id: str, details: DomainErrorDetails) -> None:
 		with self._lock:
 			assert self._active_run is not None
-			self._set_active_run(
+			self._last_error = details
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="recovery_required",
@@ -331,11 +358,7 @@ class Application:
 					updated_at=self._clock(),
 					error=details,
 					permitted_next_actions=self._recovery_actions(details.code),
-				)
-			)
-			self._last_error = details
-			self._emit(
-				run_id,
+				),
 				RunEventKind.RECOVERY_REQUIRED,
 				code=details.code.value,
 				state="recovery_required",
@@ -358,6 +381,8 @@ class Application:
 		workspace = self._active_workspace(context)
 		if isinstance(command, SwitchWorkspaceCommand):
 			self._invalidate_write_intent("工作区已切换，本次确认已取消。")
+			with self._lock:
+				self._ai_suggestion = None
 			if workspace is WorkspaceKind.RECRUITING:
 				with self._lock:
 					if self._active_run is not None and self._run_workspace is workspace:
@@ -386,12 +411,16 @@ class Application:
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, ConnectPlatformSessionCommand):
 			self._invalidate_write_intent("平台会话正在重新连接，本次确认已取消。")
+			with self._lock:
+				self._ai_suggestion = None
 			if workspace is WorkspaceKind.RECRUITING:
 				self._clear_recruiting_sensitive()
 			self._credential_store.begin_connect(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, LogoutPlatformSessionCommand):
 			self._invalidate_write_intent("平台会话已退出，本次确认已取消。")
+			with self._lock:
+				self._ai_suggestion = None
 			if workspace is WorkspaceKind.RECRUITING:
 				self._clear_recruiting_sensitive()
 			self._credential_store.begin_logout(workspace)
@@ -416,9 +445,17 @@ class Application:
 					recoverable=True,
 					recovery_action="Retry saving the goal",
 				) from exc
+			with self._lock:
+				self._ai_suggestion = None
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, StartJobSearchCommand):
 			return self._start_job_search(workspace, context)
+		if isinstance(command, RequestAIAssistanceCommand):
+			return self._request_ai_assistance(command, workspace, context)
+		if isinstance(command, DiscardAISuggestionCommand):
+			with self._lock:
+				self._ai_suggestion = None
+			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 		if isinstance(command, CancelRunCommand):
 			return self._cancel_run(command, workspace, context)
 		if isinstance(command, ResumeRunCommand):
@@ -451,6 +488,140 @@ class Application:
 			correlation_id=context.correlation_id,
 			recoverable=False,
 		)
+
+	def _request_ai_assistance(
+		self,
+		command: RequestAIAssistanceCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		if self._ai is None:
+			raise DomainError(
+				code=ErrorCode.UNSUPPORTED_CAPABILITY,
+				message="AI assistance is optional and no provider is configured",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Configure an AI provider or continue without AI",
+			)
+		configuration = self._ai_configuration()
+		if not configuration.configured or not configuration.provider or not configuration.model:
+			raise DomainError(
+				code=ErrorCode.UNSUPPORTED_CAPABILITY,
+				message="AI assistance is optional and no provider is configured",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Configure an AI provider or continue without AI",
+			)
+		if not command.disclosure_acknowledged:
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Review and acknowledge the AI data disclosure before use",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Review the provider, model, endpoint, and listed data",
+			)
+		with self._lock:
+			if command.kind in {AIAssistanceKind.JOB_MATCH, AIAssistanceKind.JOB_GREETING_DRAFT}:
+				self._require_job_workspace(workspace, context)
+				selected_job = self._selected_job
+				goal = self._workspace_store.load_job_search_goal()
+				if selected_job is None or goal is None:
+					raise DomainError(
+						code=ErrorCode.INVALID_TRANSITION,
+						message="Inspect one job before requesting AI assistance",
+						correlation_id=context.correlation_id,
+						recoverable=True,
+						recovery_action="Inspect a visible job first",
+					)
+				job = selected_job.source.job
+				request = AIAssistanceRequest(
+					kind=command.kind,
+					target_reference=job.reference,
+					facts=(
+						("goal_objective", goal.objective),
+						("goal_keyword", goal.keyword),
+						("goal_city", goal.city),
+						("job_title", job.title),
+						("job_company", job.company),
+						("job_location", job.location),
+						("job_salary", job.salary),
+						("job_experience", job.experience),
+						("job_education", job.education),
+						("job_description", selected_job.source.description),
+					),
+					data_sent=("求职目标与筛选条件", "当前职位的来源事实"),
+				)
+			else:
+				self._require_recruiting_workspace(workspace, context)
+				selected_prospect = self._selected_prospect
+				opening = self._workspace_store.load_recruiting_opening()
+				if selected_prospect is None or opening is None:
+					raise DomainError(
+						code=ErrorCode.INVALID_TRANSITION,
+						message="Inspect one Recruiting Prospect before requesting AI assistance",
+						correlation_id=context.correlation_id,
+						recoverable=True,
+						recovery_action="Inspect a visible Recruiting Prospect first",
+					)
+				prospect = selected_prospect.prospect
+				request = AIAssistanceRequest(
+					kind=command.kind,
+					target_reference=prospect.reference,
+					facts=(
+						("opening_title", opening.title),
+						("prospect_display_name", prospect.display_name),
+						("prospect_headline", prospect.headline),
+						("resume_text", selected_prospect.resume_text),
+						("chat_messages", "\n".join(selected_prospect.chat_messages)),
+					),
+					data_sent=("当前招聘职位", "招聘对象摘要与简历", "当前沟通内容"),
+				)
+		try:
+			content = self._ai.suggest(request).strip()
+		except (OSError, RuntimeError) as exc:
+			raise DomainError(
+				code=ErrorCode.ADAPTER_UNAVAILABLE,
+				message="AI provider is unavailable; no platform action was performed",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Retry AI assistance later or continue without AI",
+			) from exc
+		if not content:
+			raise DomainError(
+				code=ErrorCode.ADAPTER_UNAVAILABLE,
+				message="AI provider returned no suggestion; no platform action was performed",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action="Retry AI assistance later or continue without AI",
+			)
+		current_workspace = self._active_workspace(context)
+		with self._lock:
+			current_target = (
+				self._selected_job.source.job.reference
+				if workspace is WorkspaceKind.JOB_SEEKING and self._selected_job is not None
+				else self._selected_prospect.prospect.reference
+				if workspace is WorkspaceKind.RECRUITING and self._selected_prospect is not None
+				else None
+			)
+			if current_workspace is not workspace or current_target != request.target_reference:
+				raise DomainError(
+					code=ErrorCode.INVALID_TRANSITION,
+					message="The inspected context changed while AI assistance was being generated",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Inspect the intended target and request a new suggestion",
+				)
+			self._ai_suggestion = AISuggestion(
+				kind=command.kind,
+				target_reference=request.target_reference,
+				content=content[:4000],
+				provider=configuration.provider,
+				model=configuration.model,
+				data_sent=request.data_sent,
+				created_at=self._clock(),
+			)
+			self._last_error = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=request.target_reference)
 
 	def _require_connected(self, workspace: WorkspaceKind, context: RequestContext) -> None:
 		if self._credential_store.platform_session_state(workspace) is not PlatformSessionState.CONNECTED:
@@ -510,6 +681,8 @@ class Application:
 				self._invalidate_write_intent("招聘职位已改变，本次确认已取消。")
 		self._workspace_store.save_recruiting_opening(opening)
 		self._clear_recruiting_sensitive()
+		with self._lock:
+			self._ai_suggestion = None
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=opening.reference)
 
 	def _start_inbound_applicants(
@@ -542,7 +715,8 @@ class Application:
 			self._cancel_events[run_id] = cancel_event
 			self._run_workspace = workspace
 			now = self._clock()
-			self._set_active_run(
+			self._events[run_id] = []
+			self._transition_run(
 				RunSummary(
 					run_id=run_id,
 					state="running",
@@ -553,13 +727,14 @@ class Application:
 					created_at=now,
 					updated_at=now,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
 			)
 			self._applicant_results = ()
 			self._selected_prospect = None
+			self._ai_suggestion = None
 			self._last_error = None
-			self._events[run_id] = []
-		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
 		self._start_applicant_worker(
 			run_id=run_id,
 			opening_reference=opening.reference,
@@ -590,36 +765,40 @@ class Application:
 						known.update({item.reference: item for item in batch.items})
 						self._applicant_results = tuple(known.values())
 						assert self._active_run is not None
-						self._set_active_run(
+						count = len(self._applicant_results)
+						self._transition_run(
 							replace(
 								self._active_run,
 								phase="fetching",
 								progress=progress,
 								updated_at=self._clock(),
-							)
+							),
+							RunEventKind.PROGRESS,
+							progress=progress,
+							result_count=count,
 						)
-						count = len(self._applicant_results)
-					self._emit(run_id, RunEventKind.PROGRESS, progress=progress, result_count=count)
 				with self._lock:
 					progress = (self._active_run.progress if self._active_run else 0) or 0
 					state = "stopped" if cancel_event.is_set() else "completed"
 					assert self._active_run is not None
-					self._set_active_run(
-						replace(
-							self._active_run,
-							state=state,
-							phase=state,
-							progress=progress if state == "stopped" else 100,
-							updated_at=self._clock(),
-							result=RunResult(category=state, item_count=len(self._applicant_results)),
-							permitted_next_actions=("start-new-run", "discard")
-							if state == "completed"
-							else ("resume", "discard"),
-						)
+					terminal_summary = replace(
+						self._active_run,
+						state=state,
+						phase=state,
+						progress=progress if state == "stopped" else 100,
+						updated_at=self._clock(),
+						result=RunResult(category=state, item_count=len(self._applicant_results)),
+						permitted_next_actions=("start-new-run", "discard")
+						if state == "completed"
+						else ("resume", "discard"),
 					)
 					if state == "stopped":
 						self._clear_recruiting_sensitive()
-				self._emit(run_id, RunEventKind.STATE_CHANGED, state=state)
+					self._transition_run(
+						terminal_summary,
+						RunEventKind.STATE_CHANGED,
+						state=state,
+					)
 			except BossAdapterFailure as failure:
 				self._record_recruiting_failure(run_id, self._adapter_error(failure, correlation_id))
 			except (OSError, RuntimeError) as failure:
@@ -636,7 +815,9 @@ class Application:
 	def _record_recruiting_failure(self, run_id: str, details: DomainErrorDetails) -> None:
 		with self._lock:
 			assert self._active_run is not None
-			self._set_active_run(
+			self._selected_prospect = None
+			self._last_error = details
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="recovery_required",
@@ -645,12 +826,7 @@ class Application:
 					updated_at=self._clock(),
 					error=details,
 					permitted_next_actions=self._recovery_actions(details.code),
-				)
-			)
-			self._selected_prospect = None
-			self._last_error = details
-			self._emit(
-				run_id,
+				),
 				RunEventKind.RECOVERY_REQUIRED,
 				code=details.code.value,
 				state="recovery_required",
@@ -697,6 +873,8 @@ class Application:
 				recovery_action=details.recovery_action,
 			) from failure
 		with self._lock:
+			if self._ai_suggestion is not None and self._ai_suggestion.target_reference != command.reference:
+				self._ai_suggestion = None
 			self._selected_prospect = prospect
 			self._last_error = None
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.reference)
@@ -734,7 +912,8 @@ class Application:
 			self._cancel_events[run_id] = cancel_event
 			self._run_workspace = workspace
 			now = self._clock()
-			self._set_active_run(
+			self._events[run_id] = []
+			self._transition_run(
 				RunSummary(
 					run_id=run_id,
 					state="running",
@@ -745,14 +924,15 @@ class Application:
 					created_at=now,
 					updated_at=now,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
 			)
 			self._job_results = ()
 			self._selected_job = None
 			self._selected_job_session_revision = None
+			self._ai_suggestion = None
 			self._last_error = None
-			self._events[run_id] = []
-		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
 		self._start_search_worker(
 			run_id=run_id,
 			goal=goal,
@@ -789,20 +969,19 @@ class Application:
 					recoverable=False,
 				)
 			cancel_event.set()
-			self._set_active_run(
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="stopping",
 					phase="stopping",
 					updated_at=self._clock(),
 					permitted_next_actions=(),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="stopping",
 			)
 			if workspace is WorkspaceKind.RECRUITING:
 				self._clear_recruiting_sensitive()
-			# Emit while holding the same re-entrant lock so the worker cannot publish
-			# the terminal "stopped" event before the observable "stopping" transition.
-			self._emit(command.run_id, RunEventKind.STATE_CHANGED, state="stopping")
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.run_id)
 
 	def _resume_run(
@@ -872,7 +1051,7 @@ class Application:
 					)
 			cancel_event = threading.Event()
 			self._cancel_events[command.run_id] = cancel_event
-			self._set_active_run(
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="running",
@@ -883,11 +1062,13 @@ class Application:
 					result=None,
 					error=None,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
+				phase="resuming",
 			)
 			self._last_error = None
 			self._invalidate_write_intent("Run 已恢复，本次旧确认已取消。")
-		self._emit(command.run_id, RunEventKind.STATE_CHANGED, state="running", phase="resuming")
 		if kind == "job-search":
 			assert goal is not None
 			self._job_results = ()
@@ -973,6 +1154,8 @@ class Application:
 				recovery_action=details.recovery_action,
 			) from failure
 		with self._lock:
+			if self._ai_suggestion is not None and self._ai_suggestion.target_reference != command.reference:
+				self._ai_suggestion = None
 			self._selected_job = JobDetailView(
 				source=detail,
 				match_reasons=self._match_reasons(self._workspace_store.load_job_search_goal(), detail),
@@ -1391,7 +1574,8 @@ class Application:
 							recovery_action="检查保存的进度，然后明确选择恢复或丢弃",
 							correlation_id=context.correlation_id,
 						)
-						self._set_active_run(
+						self._last_error = details
+						self._transition_run(
 							replace(
 								persisted_run,
 								state="recovery_required",
@@ -1400,15 +1584,12 @@ class Application:
 								updated_at=self._clock(),
 								error=details,
 								permitted_next_actions=("resume", "discard"),
-							)
-						)
-						self._last_error = details
-						self._emit(
-							persisted_run.run_id,
+							),
 							RunEventKind.RECOVERY_REQUIRED,
 							code=details.code.value,
 							state="recovery_required",
 						)
+			ai_configuration = self._ai_configuration()
 			if (
 				self._write_intent is not None
 				and self._write_intent.summary.state is WriteIntentState.PENDING
@@ -1482,6 +1663,13 @@ class Application:
 				error=self._last_error,
 				job_seeking=job_seeking,
 				recruiting=recruiting,
+				ai_assistance=AIAssistanceState(
+					configured=ai_configuration.configured,
+					provider=ai_configuration.provider,
+					model=ai_configuration.model,
+					endpoint=ai_configuration.endpoint,
+					suggestion=self._ai_suggestion,
+				),
 			)
 
 	def events(

@@ -63,6 +63,10 @@ class InMemoryWorkspaceStore:
 			raise ValueError("run workspace is required")
 		self._runs[summary.workspace] = summary
 
+	def save_run_event(self, summary: RunSummary, event: ApplicationEvent) -> None:
+		self.save_run(summary)
+		self.append_event(summary.workspace, event)  # type: ignore[arg-type]
+
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None:
 		return self._runs.get(workspace)
 

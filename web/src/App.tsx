@@ -4,6 +4,7 @@ import {
   cancelWriteIntent,
   connectPlatformSession,
   confirmWriteIntent,
+  discardAISuggestion,
   discardRun,
   inspectJob,
   inspectRecruitingProspect,
@@ -13,6 +14,7 @@ import {
   logoutPlatformSession,
   prepareJobGreeting,
   prepareRecruitingReply,
+  requestAIAssistance,
   resumeRun,
   setShortlisted,
   selectRecruitingOpening,
@@ -23,6 +25,7 @@ import {
 } from "./api";
 import {
   deriveView,
+  type AIAssistanceKind,
   type ApplicationSnapshot,
   type JobSearchGoal,
   type SnapshotView,
@@ -118,6 +121,39 @@ export function RecruitingJourney({ snapshot, busy, onLoadOpenings, onSelectOpen
     <section className="panel"><p className="eyebrow">2 · 新招呼与投递</p><h2>{state.selected_opening ? state.selected_opening.title : "先选择职位"}</h2>{state.applicants.length === 0 ? <p>候选列表尚未读取。简历与沟通内容不会随列表自动加载。</p> : <div className="job-list">{state.applicants.map((applicant) => <article className="job-card" key={applicant.reference}><div><h3>{applicant.display_name}</h3><p>{applicant.headline || "候选人未提供摘要"}</p></div><div className="card-actions"><button disabled={busy || snapshot.platform_session !== "connected"} onClick={() => onInspectProspect(applicant.reference)}>明确查看简历与沟通</button></div></article>)}</div>}{snapshot.sensitive_content_present ? <p className="memory-notice">当前候选数据仅保存在内存；切换工作区、取消任务或退出时会清除。</p> : null}</section>
     {state.selected_prospect ? <section className="panel detail-panel sensitive-panel"><p className="eyebrow">3 · 明确查看的候选上下文</p><h2>{state.selected_prospect.prospect.display_name}</h2><p className="memory-notice"><strong>简历详情（仅内存）</strong> · 切换工作区、取消任务或退出时会清除。</p><h3>简历</h3><p className="source-copy">{state.selected_prospect.resume_text || "平台未提供简历文本。"}</p><h3>沟通记录</h3>{state.selected_prospect.chat_messages.length ? <ul className="context-list">{state.selected_prospect.chat_messages.map((message, index) => <li key={`${index}-${message}`}>{message}</li>)}</ul> : <p>平台未提供沟通记录。</p>}<h3>联系方式</h3>{state.selected_prospect.contact_details.length ? <ul className="context-list">{state.selected_prospect.contact_details.map((detail) => <li key={detail}>{detail}</li>)}</ul> : <p>平台未提供联系方式。</p>}<form className="greeting-form" key={state.selected_prospect.prospect.reference} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onPrepareReply(state.selected_prospect!.prospect.reference, String(form.get("message") ?? "")); }}><label htmlFor="recruiting-reply-message">回复内容</label><textarea id="recruiting-reply-message" name="message" required maxLength={1000} placeholder="输入要回复给这位候选人的完整消息" /><p>这一步只在本机准备确认，不会向 BOSS 发送。</p><button disabled={busy || ["pending", "executing"].includes(snapshot.pending_write_intent?.state ?? "")}>准备确认回复</button></form></section> : null}
   </div>;
+}
+
+export function AIAssistancePanel({ snapshot, busy, onRequest, onDiscard, onUseDraft }: {
+  snapshot: ApplicationSnapshot;
+  busy: boolean;
+  onRequest: (kind: AIAssistanceKind) => void;
+  onDiscard: () => void;
+  onUseDraft: (kind: AIAssistanceKind, reference: string, message: string) => void;
+}) {
+  const ai = snapshot.ai_assistance;
+  const selectedJob = snapshot.job_seeking?.selected_job?.source.job ?? null;
+  const selectedProspect = snapshot.recruiting?.selected_prospect?.prospect ?? null;
+  const hasTarget = snapshot.active_workspace === "job-seeking" ? Boolean(selectedJob) : Boolean(selectedProspect);
+  const dataCategories = snapshot.active_workspace === "job-seeking"
+    ? ["求职目标与筛选条件", "当前职位的来源事实"]
+    : ["当前招聘职位", "招聘对象摘要与简历", "当前沟通内容（不包含联系方式）"];
+
+  if (!ai?.configured) {
+    return <section className="ai-panel ai-unconfigured" aria-labelledby="ai-title"><p className="eyebrow">可选能力 · AI 建议</p><h2 id="ai-title">未配置 AI 提供方</h2><p>求职和招聘核心流程仍可完整使用；未配置密钥时不会发送任何数据。</p></section>;
+  }
+
+  const suggestion = ai.suggestion && (
+    ai.suggestion.target_reference === selectedJob?.reference || ai.suggestion.target_reference === selectedProspect?.reference
+  ) ? ai.suggestion : null;
+  const isDraft = suggestion?.kind === "job-greeting-draft" || suggestion?.kind === "recruiting-reply-draft";
+
+  return <section className="ai-panel" aria-labelledby="ai-title">
+    <div className="ai-heading"><div><p className="eyebrow">可选能力 · AI 建议（非来源事实）</p><h2 id="ai-title">需要时再请求，不会自动操作平台</h2></div><dl className="ai-provider"><div><dt>提供方</dt><dd>{ai.provider}</dd></div><div><dt>模型</dt><dd>{ai.model}</dd></div><div><dt>端点</dt><dd>{ai.endpoint}</dd></div></dl></div>
+    <div className="ai-disclosure"><h3>发送前披露</h3><p>{ai.disclosure}</p><p>只有点击下方“同意披露并请求”后，才会把这些最少必要数据发送给上述提供方：</p><ul>{dataCategories.map((item) => <li key={item}>{item}</li>)}</ul></div>
+    <div className="form-actions">{snapshot.active_workspace === "job-seeking" ? <><button disabled={busy || !hasTarget} onClick={() => onRequest("job-match")}>同意披露并请求匹配解释</button><button className="secondary-button" disabled={busy || !hasTarget} onClick={() => onRequest("job-greeting-draft")}>同意披露并请求招呼草稿</button></> : <button disabled={busy || !hasTarget} onClick={() => onRequest("recruiting-reply-draft")}>同意披露并请求回复草稿</button>}</div>
+    {!hasTarget ? <p className="ai-hint">先明确查看一个对象，AI 请求按钮才会启用。</p> : null}
+    {suggestion ? <article className="ai-suggestion" aria-label="AI 建议，不是来源事实"><p className="eyebrow">AI 建议 · 不是平台来源事实</p><p className="ai-provenance">由 {suggestion.provider} / {suggestion.model} 生成 · 已发送：{suggestion.data_sent.join("、")}</p>{isDraft ? <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onUseDraft(suggestion.kind, suggestion.target_reference, String(form.get("ai-draft") ?? "")); }}><label htmlFor="ai-draft">可编辑草稿</label><textarea id="ai-draft" name="ai-draft" required maxLength={1000} defaultValue={suggestion.content} /><p>编辑后仍不会自动发送；下一步只会创建独立的发送前确认。</p><div className="form-actions"><button disabled={busy}>使用编辑后的草稿，进入发送前确认</button><button type="button" className="secondary-button" disabled={busy} onClick={onDiscard}>丢弃 AI 草稿</button></div></form> : <><p className="ai-copy">{suggestion.content}</p><button className="secondary-button" disabled={busy} onClick={onDiscard}>丢弃 AI 建议</button></>}</article> : null}
+  </section>;
 }
 
 export function WriteConfirmationGate({ intent, busy, onConfirm, onCancel }: {
@@ -224,5 +260,5 @@ export default function App() {
   const perform = useCallback(async (action: () => Promise<ApplicationSnapshot>) => { setCommandPending(true); setCommandError(null); try { const next = await action(); setSnapshot(next); setScreen(deriveView(next)); } catch (error) { setCommandError(error instanceof Error ? error.message : "操作未完成，请重试。"); await refresh(); } finally { setCommandPending(false); } }, [refresh]);
   if (screen === "loading") return <main className="center-card" aria-live="polite"><div className="spinner" /><h1>正在安全启动本地工作台</h1><p>正在建立一次性本机会话并读取服务端状态。</p></main>;
   if (!snapshot) return <main className="center-card error-card"><p className="eyebrow">启动失败</p><h1>无法进入本地工作台</h1><p>{clientError}</p><button onClick={() => void refresh()}>重试</button></main>;
-  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} /><RunRecoveryPanel snapshot={snapshot} busy={commandPending} onResume={(runId) => void perform(() => resumeRun(runId))} onDiscard={(runId) => void perform(() => discardRun(runId))} />{snapshot.pending_write_intent ? <WriteConfirmationGate intent={snapshot.pending_write_intent} busy={commandPending} onConfirm={() => void perform(() => confirmWriteIntent(snapshot.pending_write_intent!.intent_id))} onCancel={() => void perform(() => cancelWriteIntent(snapshot.pending_write_intent!.intent_id))} /> : null}{screen !== "error" && snapshot.active_workspace === "job-seeking" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} onPrepareGreeting={(reference, message) => void perform(() => prepareJobGreeting(reference, message))} /> : null}{screen !== "error" && snapshot.active_workspace === "recruiting" ? <RecruitingJourney snapshot={snapshot} busy={commandPending} onLoadOpenings={() => void perform(loadRecruitingOpenings)} onSelectOpening={(reference) => void perform(() => selectRecruitingOpening(reference))} onLoadApplicants={() => void perform(startInboundApplicants)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspectProspect={(reference) => void perform(() => inspectRecruitingProspect(reference))} onPrepareReply={(reference, message) => void perform(() => prepareRecruitingReply(reference, message))} /> : null}<footer>仅监听 127.0.0.1 · 敏感招聘内容仅在内存停留 · Browser Bridge 不在本流程内</footer></main>;
+  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} /><RunRecoveryPanel snapshot={snapshot} busy={commandPending} onResume={(runId) => void perform(() => resumeRun(runId))} onDiscard={(runId) => void perform(() => discardRun(runId))} />{screen !== "error" ? <AIAssistancePanel snapshot={snapshot} busy={commandPending} onRequest={(kind) => void perform(() => requestAIAssistance(kind))} onDiscard={() => void perform(discardAISuggestion)} onUseDraft={(kind, reference, message) => void perform(() => kind === "recruiting-reply-draft" ? prepareRecruitingReply(reference, message) : prepareJobGreeting(reference, message))} /> : null}{snapshot.pending_write_intent ? <WriteConfirmationGate intent={snapshot.pending_write_intent} busy={commandPending} onConfirm={() => void perform(() => confirmWriteIntent(snapshot.pending_write_intent!.intent_id))} onCancel={() => void perform(() => cancelWriteIntent(snapshot.pending_write_intent!.intent_id))} /> : null}{screen !== "error" && snapshot.active_workspace === "job-seeking" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} onPrepareGreeting={(reference, message) => void perform(() => prepareJobGreeting(reference, message))} /> : null}{screen !== "error" && snapshot.active_workspace === "recruiting" ? <RecruitingJourney snapshot={snapshot} busy={commandPending} onLoadOpenings={() => void perform(loadRecruitingOpenings)} onSelectOpening={(reference) => void perform(() => selectRecruitingOpening(reference))} onLoadApplicants={() => void perform(startInboundApplicants)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspectProspect={(reference) => void perform(() => inspectRecruitingProspect(reference))} onPrepareReply={(reference, message) => void perform(() => prepareRecruitingReply(reference, message))} /> : null}<footer>仅监听 127.0.0.1 · 敏感招聘内容仅在内存停留 · Browser Bridge 不在本流程内</footer></main>;
 }

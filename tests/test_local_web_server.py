@@ -14,6 +14,8 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from boss_agent_cli.application import (
+	AIAssistanceRequest,
+	AIProviderConfiguration,
 	Application,
 	CurrentStateQuery,
 	InboundApplicant,
@@ -130,6 +132,18 @@ def _command_headers(server: LocalWebServer, token: str) -> dict[str, str]:
 		"Origin": server.origin,
 		"Sec-Fetch-Site": "same-origin",
 	}
+
+
+class _RecordingAI:
+	def __init__(self) -> None:
+		self.requests: list[AIAssistanceRequest] = []
+
+	def configuration(self) -> AIProviderConfiguration:
+		return AIProviderConfiguration(True, "OpenAI", "gpt-example", "https://api.example.test/v1")
+
+	def suggest(self, request: AIAssistanceRequest) -> str:
+		self.requests.append(request)
+		return "AI 建议草稿：您好，想进一步了解岗位。"
 
 
 def test_server_uses_an_ephemeral_ipv4_loopback_port(tmp_path: Path):
@@ -828,3 +842,90 @@ def test_write_intent_routes_whitelist_fields_and_confirm_exactly_once(tmp_path:
 	assert duplicate_status == 400
 	assert json.loads(duplicate_body)["error"]["code"] == "WRITE_INTENT_CONSUMED"
 	assert boss.greeting_calls == [("job-1", "您好")]
+
+
+def test_ai_assistance_routes_are_advisory_and_whitelist_fields(tmp_path: Path):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-ai",
+		session_token_factory=lambda: "session-token",
+	)
+	job = JobSummary("job-ai", "Python 后端工程师", "示例科技", "上海")
+	boss = FakeBossAdapter(
+		search_batches=(JobSearchBatch((job,), 100),),
+		details={"job-ai": JobSourceDetail(job, "负责 Python 服务")},
+	)
+	ai = _RecordingAI()
+	application = Application(
+		workspace_store=WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-ai"),
+		credential_store=InMemoryCredentialStore(
+			{WorkspaceKind.JOB_SEEKING: PlatformSessionState.CONNECTED},
+		),
+		boss=boss,
+		ai=ai,
+		run_id_factory=lambda: "search-ai",
+	)
+	context = RequestContext("local-session-ai", "setup")
+	application.execute(UpdateJobSearchGoalCommand(JobSearchGoal("后端", "Python")), context)
+	application.execute(StartJobSearchCommand(), context)
+	deadline = time.monotonic() + 2
+	while time.monotonic() < deadline:
+		if application.query(CurrentStateQuery(), context).active_run.state == "completed":
+			break
+		time.sleep(0.01)
+	application.execute(InspectJobCommand("job-ai"), context)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		request_status, _, request_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/request-ai-assistance",
+			headers=headers,
+			body={
+				"request_id": "ai-1",
+				"kind": "job-greeting-draft",
+				"disclosure_acknowledged": True,
+			},
+		)
+		forged_status, _, forged_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/request-ai-assistance",
+			headers=headers,
+			body={
+				"request_id": "ai-forged",
+				"kind": "job-greeting-draft",
+				"disclosure_acknowledged": True,
+				"target_reference": "job-attacker",
+				"message": "直接发送",
+				"confirm": True,
+			},
+		)
+		discard_status, _, discard_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/discard-ai-suggestion",
+			headers=headers,
+			body={"request_id": "ai-discard"},
+		)
+	finally:
+		server.close()
+
+	assert request_status == 200
+	suggestion = json.loads(request_body)["snapshot"]["ai_assistance"]["suggestion"]
+	assert suggestion["kind"] == "job-greeting-draft"
+	assert suggestion["target_reference"] == "job-ai"
+	assert suggestion["provider"] == "OpenAI"
+	assert ai.requests[0].target_reference == "job-ai"
+	assert forged_status == 400
+	assert json.loads(forged_body)["error"]["code"] == "INVALID_REQUEST"
+	assert discard_status == 200
+	assert json.loads(discard_body)["snapshot"]["ai_assistance"]["suggestion"] is None
+	assert boss.greeting_calls == []

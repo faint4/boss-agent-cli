@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { JobJourney, RecruitingJourney, RunRecoveryPanel, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
+import App, { AIAssistancePanel, JobJourney, RecruitingJourney, RunRecoveryPanel, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -142,6 +142,66 @@ describe("local Web shell states", () => {
 
     expect(stopping).toContain("正在安全退出");
     expect(recovery).toContain("重新连接 BOSS");
+  });
+
+  it("keeps both core journeys usable when no AI provider is configured", () => {
+    const markup = renderToStaticMarkup(
+      <AIAssistancePanel
+        snapshot={{ ...baseSnapshot, ai_assistance: { configured: false, provider: null, model: null, endpoint: null, disclosure: "", suggestion: null } }}
+        busy={false}
+        onRequest={() => undefined}
+        onDiscard={() => undefined}
+        onUseDraft={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("未配置 AI 提供方");
+    expect(markup).toContain("核心流程仍可完整使用");
+    expect(markup).not.toContain("同意披露并请求");
+  });
+
+  it("separates an editable AI draft from source facts and discloses provider data first", () => {
+    const job = {
+      reference: "job-1", title: "Python 后端工程师", company: "示例科技", location: "上海",
+      salary: "20-40K", experience: "3-5年", education: "本科",
+    };
+    const markup = renderToStaticMarkup(
+      <AIAssistancePanel
+        snapshot={{
+          ...baseSnapshot,
+          job_seeking: {
+            goal: { objective: "后端", keyword: "Python", city: "上海", salary: "", experience: "", education: "" },
+            results: [job], shortlist: [],
+            selected_job: { source: { job, description: "来源原文", company_stage: "", company_size: "", recruiter: "" }, match_reasons: [] },
+          },
+          ai_assistance: {
+            configured: true, provider: "OpenAI", model: "gpt-example", endpoint: "https://api.example.test/v1",
+            disclosure: "只发送界面列出的最少必要数据。",
+            suggestion: {
+              kind: "job-greeting-draft", target_reference: "job-1", content: "您好，希望进一步沟通。",
+              provider: "OpenAI", model: "gpt-example", data_sent: ["求职目标与筛选条件", "当前职位的来源事实"],
+              created_at: "2026-08-22T10:00:00+00:00",
+            },
+          },
+        }}
+        busy={false}
+        onRequest={() => undefined}
+        onDiscard={() => undefined}
+        onUseDraft={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("AI 建议（非来源事实）");
+    expect(markup).toContain("发送前披露");
+    expect(markup).toContain("OpenAI");
+    expect(markup).toContain("gpt-example");
+    expect(markup).toContain("https://api.example.test/v1");
+    expect(markup).toContain("同意披露并请求招呼草稿");
+    expect(markup).toContain("可编辑草稿");
+    expect(markup).toContain("您好，希望进一步沟通。");
+    expect(markup).toContain("使用编辑后的草稿，进入发送前确认");
+    expect(markup).toContain("丢弃 AI 草稿");
+    expect(markup).toContain("不会自动发送");
   });
 
   it("renders the complete read-only job journey and persisted shortlist", () => {

@@ -114,6 +114,27 @@ export type WriteIntent = {
   outcome_message: string | null;
 };
 
+export type AIAssistanceKind = "job-match" | "job-greeting-draft" | "recruiting-reply-draft";
+
+export type AISuggestion = {
+  kind: AIAssistanceKind;
+  target_reference: string;
+  content: string;
+  provider: string;
+  model: string;
+  data_sent: string[];
+  created_at: string;
+};
+
+export type AIAssistanceState = {
+  configured: boolean;
+  provider: string | null;
+  model: string | null;
+  endpoint: string | null;
+  disclosure: string;
+  suggestion: AISuggestion | null;
+};
+
 export type ApplicationSnapshot = {
   schema_version: string;
   active_workspace: "job-seeking" | "recruiting";
@@ -127,6 +148,7 @@ export type ApplicationSnapshot = {
   error: DomainError | null;
   job_seeking: JobSeekingState | null;
   recruiting: RecruitingState | null;
+  ai_assistance?: AIAssistanceState | null;
 };
 
 export type SnapshotView = "ready" | "empty" | "error" | "recovery";
