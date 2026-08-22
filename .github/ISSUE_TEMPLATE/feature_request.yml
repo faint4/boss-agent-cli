@@ -7,8 +7,8 @@ body:
     attributes:
       value: |
         提交前请：
-        - ✅ 搜索过 [现有 Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues?q=is%3Aissue) 确认无重复
-        - ✅ 查看过 [ROADMAP.md](https://github.com/can4hou6joeng4/boss-agent-cli/blob/master/ROADMAP.md) 了解路线图
+        - ✅ 搜索过 [现有 Issue](https://github.com/faint4/boss-agent-cli/issues?q=is%3Aissue) 确认无重复
+        - ✅ 查看过 [ROADMAP.md](https://github.com/faint4/boss-agent-cli/blob/master/ROADMAP.md) 了解路线图
 
   - type: checkboxes
     id: preflight

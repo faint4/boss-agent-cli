@@ -34,6 +34,35 @@ For each sync:
 
 Wholesale upstream merges, automated merge bots, force-pushing the protected branch, and silent adoption of upstream defaults are prohibited. A security fix may be expedited, but still receives a traceable issue, source reference, focused test, and release note.
 
+### Executable workflow
+
+Configure remotes once in each maintainer clone:
+
+```bash
+git remote add upstream https://github.com/can4hou6joeng4/boss-agent-cli.git
+git remote set-url --push upstream DISABLED
+git remote -v
+```
+
+Create a review body without applying changes:
+
+```bash
+python scripts/fork_governance.py draft-upstream-review \
+  --source <upstream-commit> \
+  --impact "Describe local modules, interfaces, ADRs, and product behavior" \
+  --tests "List focused and full verification" \
+  --dry-run
+```
+
+Paste the output into the `Upstream sync review` Issue form. After each accepted commit is recorded, use a `sync/upstream-YYYYMMDD` branch and `git cherry-pick -x <commit>`. The pull request must remain linear and pass:
+
+```bash
+python scripts/fork_governance.py verify-metadata
+python scripts/fork_governance.py verify-pr --base <base-sha> --head <head-sha>
+```
+
+The CI workflow runs the same checks. `verify-metadata` rejects stale upstream URLs on current public product surfaces; known provenance documents and explicit source-commit fields remain allowed to reference upstream.
+
 ## Compatibility policy
 
 - Existing CLI and MCP compatibility is preserved where it does not conflict with the independent product's security and Workspace model.

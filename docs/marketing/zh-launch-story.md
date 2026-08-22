@@ -92,9 +92,9 @@ MCP 配置示例：
 
 ### 5. 链接
 
-- GitHub: https://github.com/can4hou6joeng4/boss-agent-cli
+- GitHub: https://github.com/faint4/boss-agent-cli
 - PyPI: https://pypi.org/project/boss-agent-cli/
-- Roadmap: https://github.com/can4hou6joeng4/boss-agent-cli/blob/master/ROADMAP.md
+- Roadmap: https://github.com/faint4/boss-agent-cli/blob/master/ROADMAP.md
 
 如果你也在找 Agent 开发的真实场景，欢迎 Star/Fork/提 Issue。MIT 开源，数据默认留在本机。
 

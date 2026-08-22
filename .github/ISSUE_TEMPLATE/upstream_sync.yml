@@ -1,0 +1,51 @@
+name: Upstream sync review
+description: Review selected upstream commits without merging upstream history wholesale
+title: "Upstream sync: "
+labels:
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This fork adopts upstream changes deliberately. List individual commits and preserve provenance.
+  - type: textarea
+    id: source_commits
+    attributes:
+      label: Upstream source commits
+      description: One can4hou6joeng4/boss-agent-cli commit URL and classification per line.
+      placeholder: "https://github.com/can4hou6joeng4/boss-agent-cli/commit/<sha> — security/correctness"
+    validations:
+      required: true
+  - type: textarea
+    id: local_impact
+    attributes:
+      label: Local product impact
+      description: Explain affected modules, interfaces, ADRs, and independent product behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: List focused tests, full gates, and any manual evidence required before acceptance.
+    validations:
+      required: true
+  - type: textarea
+    id: attribution
+    attributes:
+      label: Attribution
+      description: Record how source references, copyright, license, and release-note credit will be preserved.
+      value: "Cherry-pick each accepted commit with -x; preserve copyright and MIT license notices."
+    validations:
+      required: true
+  - type: checkboxes
+    id: safeguards
+    attributes:
+      label: Fork safeguards
+      options:
+        - label: No wholesale upstream merge or automated merge bot will be used.
+          required: true
+        - label: Each commit will be accepted or rejected individually with a recorded reason.
+          required: true
+        - label: Conflicts will preserve Workspace isolation, Confirmation Gates, and local product ADRs.
+          required: true

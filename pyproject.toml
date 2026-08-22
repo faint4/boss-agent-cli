@@ -40,9 +40,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/can4hou6joeng4/boss-agent-cli"
-Repository = "https://github.com/can4hou6joeng4/boss-agent-cli"
-Issues = "https://github.com/can4hou6joeng4/boss-agent-cli/issues"
+Homepage = "https://github.com/faint4/boss-agent-cli"
+Repository = "https://github.com/faint4/boss-agent-cli"
+Issues = "https://github.com/faint4/boss-agent-cli/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -250,6 +250,10 @@ module = [
 	"boss_agent_cli.mcp_args",
 	"boss_agent_cli.mcp_server",
 	"boss_agent_cli.mcp_tools",
+	"boss_agent_cli.application",
+	"boss_agent_cli.application.contracts",
+	"boss_agent_cli.application.module",
+	"boss_agent_cli.application.testing",
 ]
 disallow_untyped_defs = true
 disallow_any_generics = true

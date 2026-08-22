@@ -63,3 +63,5 @@ Closes #
 - [ ] 如涉及 Cookie、CDP、patchright、请求频率或真实账号，已阅读 `docs/platform-risk.md`
 - [ ] 如涉及发布流程，已阅读 `docs/maintainer/release-checklist.md`
 - [ ] 无新增外部 CDN / script 依赖（HTML 报表类特别注意）
+- [ ] 分支历史保持线性，没有 merge commit 或 wholesale upstream merge
+- [ ] 如吸收 upstream commit：已关联 `Upstream sync review` Issue，并使用 `git cherry-pick -x` 保留来源

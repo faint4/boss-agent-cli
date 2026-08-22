@@ -138,7 +138,7 @@ def render_digest_markdown(data: dict[str, Any], *, generated_at: str | None = N
 
 	lines.append("---")
 	lines.append("")
-	lines.append("_由 `boss digest --format md` 生成 · [boss-agent-cli](https://github.com/can4hou6joeng4/boss-agent-cli)_")
+	lines.append("_由 `boss digest --format md` 生成 · [boss-agent-cli](https://github.com/faint4/boss-agent-cli)_")
 	lines.append("")
 
 	return "\n".join(lines)

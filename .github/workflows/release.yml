@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   release:
+    if: github.repository == 'faint4/boss-agent-cli'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

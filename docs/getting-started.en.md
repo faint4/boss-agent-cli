@@ -12,7 +12,7 @@ patchright install chromium
 Source checkout:
 
 ```bash
-git clone https://github.com/can4hou6joeng4/boss-agent-cli.git
+git clone https://github.com/faint4/boss-agent-cli.git
 cd boss-agent-cli
 uv sync --all-extras
 uv run patchright install chromium

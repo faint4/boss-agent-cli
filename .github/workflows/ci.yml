@@ -15,6 +15,24 @@ permissions:
   contents: read
 
 jobs:
+  fork_governance:
+    name: Independent fork governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify canonical fork metadata
+        run: python scripts/fork_governance.py verify-metadata
+
+      - name: Reject merge commits in contribution branches
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/fork_governance.py verify-pr --base "$BASE_SHA" --head "$HEAD_SHA"
+
   p0_quality_gate:
     name: P0 quality baseline
     runs-on: ubuntu-latest

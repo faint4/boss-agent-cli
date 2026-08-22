@@ -23,6 +23,6 @@ Unlike scraping or auto-apply bots, boss-agent-cli is intentionally scoped to lo
 MIT. Python >= 3.10. Browser core (patchright) only for user-triggered login and local export.
 
 ## Links
-- GitHub: https://github.com/can4hou6joeng4/boss-agent-cli
+- GitHub: https://github.com/faint4/boss-agent-cli
 - PyPI: https://pypi.org/project/boss-agent-cli/
 - Homepage: https://can4hou6joeng4.github.io/boss-agent-cli/

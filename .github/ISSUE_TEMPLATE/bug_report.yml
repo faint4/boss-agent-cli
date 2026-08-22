@@ -7,9 +7,9 @@ body:
     attributes:
       value: |
         感谢反馈！提交前请确认：
-        - ✅ 已搜索过 [现有 Issue](https://github.com/can4hou6joeng4/boss-agent-cli/issues?q=is%3Aissue) 没有重复
+        - ✅ 已搜索过 [现有 Issue](https://github.com/faint4/boss-agent-cli/issues?q=is%3Aissue) 没有重复
         - ✅ 已升级到最新版：`uv tool install --upgrade boss-agent-cli`
-        - ✅ 使用问题请移步 [Discussions](https://github.com/can4hou6joeng4/boss-agent-cli/discussions)
+        - ✅ 使用问题请移步 [Discussions](https://github.com/faint4/boss-agent-cli/discussions)
 
   - type: checkboxes
     id: preflight

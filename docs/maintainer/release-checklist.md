@@ -4,6 +4,8 @@ Use this checklist before publishing a release tag.
 
 ## 1. Confirm scope
 
+- The version and tag were chosen for `faint4/boss-agent-cli`; they were not copied from an upstream release.
+- The release belongs to the fork's current independent version line and links its own GitHub Issues.
 - The release has a single coherent theme.
 - Breaking changes are called out in `CHANGELOG.md`.
 - CLI JSON envelope changes are documented.

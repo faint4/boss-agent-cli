@@ -109,9 +109,9 @@ boss search "你的目标职位"
 
 这个项目的初衷很简单：**找工作已经够累了，不应该把时间浪费在重复操作上**。
 
-如果你觉得有用，欢迎 [star 支持](https://github.com/can4hou6joeng4/boss-agent-cli)。Issue 和 PR 都欢迎。
+如果你觉得有用，欢迎 [star 支持](https://github.com/faint4/boss-agent-cli)。Issue 和 PR 都欢迎。
 
 ---
 
-GitHub: https://github.com/can4hou6joeng4/boss-agent-cli
+GitHub: https://github.com/faint4/boss-agent-cli
 License: MIT
