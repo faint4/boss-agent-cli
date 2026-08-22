@@ -57,6 +57,61 @@ def _wait_for_terminal(application: Application):
 	raise AssertionError("run did not complete")
 
 
+class _PausingWorkspaceRegistry(WorkspaceRegistry):
+	def __init__(self, *args, transition_reached: threading.Event, release_transition: threading.Event, **kwargs):
+		super().__init__(*args, **kwargs)
+		self._transition_reached = transition_reached
+		self._release_transition = release_transition
+
+	def _pause_terminal_transition(self, state: str) -> None:
+		if state == "completed":
+			self._transition_reached.set()
+			if not self._release_transition.wait(timeout=5):
+				raise AssertionError("terminal transition was not released")
+
+	def save_run(self, summary) -> None:
+		super().save_run(summary)
+		self._pause_terminal_transition(summary.state)
+
+	def save_run_event(self, summary, event) -> None:
+		self._pause_terminal_transition(summary.state)
+		super().save_run_event(summary, event)
+
+
+def test_terminal_snapshot_never_precedes_its_terminal_event(tmp_path) -> None:
+	transition_reached = threading.Event()
+	release_transition = threading.Event()
+	registry = _PausingWorkspaceRegistry(
+		tmp_path,
+		local_session_id="local-session",
+		transition_reached=transition_reached,
+		release_transition=release_transition,
+	)
+	observer = WorkspaceRegistry(tmp_path, local_session_id="local-session")
+	allow_terminal = threading.Event()
+	application = _application(
+		registry,
+		FakeBossAdapter(
+			search_batches=(JobSearchBatch((JOB,), 50), JobSearchBatch((JOB,), 100)),
+			batch_gate=allow_terminal,
+		),
+	)
+	application.execute(UpdateJobSearchGoalCommand(GOAL), _context())
+	application.execute(StartJobSearchCommand(), _context())
+	allow_terminal.set()
+	assert transition_reached.wait(timeout=2)
+
+	observed_run = observer.load_latest_run(WorkspaceKind.JOB_SEEKING)
+	release_transition.set()
+	completed = _wait_for_terminal(application)
+	completed_events = observer.read_events(WorkspaceKind.JOB_SEEKING, "run-19")
+
+	assert completed.active_run is not None
+	assert observed_run is not None
+	assert observed_run.state != "completed"
+	assert dict(completed_events[-1].payload).get("state") == "completed"
+
+
 def test_completed_run_snapshot_and_events_survive_restart(tmp_path) -> None:
 	registry = WorkspaceRegistry(tmp_path, local_session_id="local-session")
 	boss = FakeBossAdapter(search_batches=(JobSearchBatch((JOB,), 100),))

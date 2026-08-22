@@ -270,6 +270,39 @@ class WorkspaceRegistry:
 			)
 			connection.commit()
 
+	def save_run_event(self, summary: RunSummary, event: ApplicationEvent) -> None:
+		if summary.workspace is None or summary.updated_at is None:
+			raise ValueError("persisted run requires workspace and updated_at")
+		if event.run_id != summary.run_id:
+			raise ValueError("run event must belong to the persisted run")
+		paths = self.ensure_workspace(summary.workspace)
+		run_payload = json.dumps(self._run_payload(summary), ensure_ascii=False, sort_keys=True)
+		event_payload = json.dumps(
+			{
+				"cursor": event.cursor,
+				"run_id": event.run_id,
+				"kind": event.kind.value,
+				"occurred_at": event.occurred_at.isoformat(),
+				"payload": event.payload,
+			},
+			ensure_ascii=False,
+			sort_keys=True,
+		)
+		with sqlite3.connect(paths.database) as connection:
+			connection.execute(
+				"INSERT OR REPLACE INTO runs(run_id, snapshot, updated_at) VALUES (?, ?, ?)",
+				(summary.run_id, run_payload, summary.updated_at.isoformat()),
+			)
+			connection.execute(
+				"INSERT OR REPLACE INTO local_state(key, value) VALUES ('active-run-id', ?)",
+				(summary.run_id,),
+			)
+			connection.execute(
+				"INSERT OR REPLACE INTO run_events(run_id, cursor, event) VALUES (?, ?, ?)",
+				(event.run_id, event.cursor, event_payload),
+			)
+			connection.commit()
+
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None:
 		paths = self.ensure_workspace(workspace)
 		with sqlite3.connect(paths.database) as connection:

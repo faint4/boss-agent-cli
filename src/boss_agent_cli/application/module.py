@@ -71,6 +71,7 @@ class WorkspaceStore(Protocol):
 	def sensitive_content_present(self, workspace: WorkspaceKind) -> bool: ...
 	def last_transition(self, local_session_id: str) -> str | None: ...
 	def save_run(self, summary: RunSummary) -> None: ...
+	def save_run_event(self, summary: RunSummary, event: ApplicationEvent) -> None: ...
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None: ...
 	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None: ...
 	def read_events(self, workspace: WorkspaceKind, run_id: str) -> tuple[ApplicationEvent, ...]: ...
@@ -251,27 +252,21 @@ class Application:
 		except (OSError, RuntimeError, TypeError, ValueError):
 			return AIProviderConfiguration(configured=False)
 
-	def _emit(self, run_id: str, kind: RunEventKind, **payload: object) -> None:
+	def _transition_run(self, summary: RunSummary, kind: RunEventKind, **payload: object) -> None:
 		with self._lock:
-			events = self._events.setdefault(run_id, [])
+			events = self._events.setdefault(summary.run_id, [])
 			event = ApplicationEvent(
-					cursor=len(events) + 1,
-					run_id=run_id,
-					kind=kind,
-					occurred_at=self._clock(),
-					payload=tuple(payload.items()),
+				cursor=len(events) + 1,
+				run_id=summary.run_id,
+				kind=kind,
+				occurred_at=self._clock(),
+				payload=tuple(payload.items()),
 			)
+			self._workspace_store.save_run_event(summary, event)
+			self._active_run = summary
+			if summary.workspace is not None:
+				self._run_workspace = summary.workspace
 			events.append(event)
-			if self._active_run is not None and self._active_run.run_id == run_id:
-				workspace = self._active_run.workspace or self._run_workspace
-				if workspace is not None:
-					self._workspace_store.append_event(workspace, event)
-
-	def _set_active_run(self, summary: RunSummary) -> None:
-		self._active_run = summary
-		if summary.workspace is not None:
-			self._run_workspace = summary.workspace
-		self._workspace_store.save_run(summary)
 
 	def _adapter_error(self, failure: BossAdapterFailure, correlation_id: str) -> DomainErrorDetails:
 		code = failure.code if failure.code in _RECOVERY_ACTIONS else ErrorCode.ADAPTER_UNAVAILABLE
@@ -308,21 +303,23 @@ class Application:
 						known.update({item.reference: item for item in batch.items})
 						self._job_results = tuple(known.values())
 						assert self._active_run is not None
-						self._set_active_run(
+						result_count = len(self._job_results)
+						self._transition_run(
 							replace(
 								self._active_run,
 								phase="fetching",
 								progress=progress,
 								updated_at=self._clock(),
-							)
+							),
+							RunEventKind.PROGRESS,
+							progress=progress,
+							result_count=result_count,
 						)
-						result_count = len(self._job_results)
-					self._emit(run_id, RunEventKind.PROGRESS, progress=progress, result_count=result_count)
 				with self._lock:
 					current_progress = (self._active_run.progress if self._active_run else 0) or 0
 					state = "stopped" if cancel_event.is_set() else "completed"
 					assert self._active_run is not None
-					self._set_active_run(
+					self._transition_run(
 						replace(
 							self._active_run,
 							state=state,
@@ -333,9 +330,10 @@ class Application:
 							permitted_next_actions=("start-new-run", "discard")
 							if state == "completed"
 							else ("resume", "discard"),
-						)
+						),
+						RunEventKind.STATE_CHANGED,
+						state=state,
 					)
-				self._emit(run_id, RunEventKind.STATE_CHANGED, state=state)
 			except BossAdapterFailure as failure:
 				self._record_search_failure(run_id, self._adapter_error(failure, correlation_id))
 			except (OSError, RuntimeError) as failure:
@@ -350,7 +348,8 @@ class Application:
 	def _record_search_failure(self, run_id: str, details: DomainErrorDetails) -> None:
 		with self._lock:
 			assert self._active_run is not None
-			self._set_active_run(
+			self._last_error = details
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="recovery_required",
@@ -359,11 +358,7 @@ class Application:
 					updated_at=self._clock(),
 					error=details,
 					permitted_next_actions=self._recovery_actions(details.code),
-				)
-			)
-			self._last_error = details
-			self._emit(
-				run_id,
+				),
 				RunEventKind.RECOVERY_REQUIRED,
 				code=details.code.value,
 				state="recovery_required",
@@ -720,7 +715,8 @@ class Application:
 			self._cancel_events[run_id] = cancel_event
 			self._run_workspace = workspace
 			now = self._clock()
-			self._set_active_run(
+			self._events[run_id] = []
+			self._transition_run(
 				RunSummary(
 					run_id=run_id,
 					state="running",
@@ -731,14 +727,14 @@ class Application:
 					created_at=now,
 					updated_at=now,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
 			)
 			self._applicant_results = ()
 			self._selected_prospect = None
 			self._ai_suggestion = None
 			self._last_error = None
-			self._events[run_id] = []
-		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
 		self._start_applicant_worker(
 			run_id=run_id,
 			opening_reference=opening.reference,
@@ -769,36 +765,40 @@ class Application:
 						known.update({item.reference: item for item in batch.items})
 						self._applicant_results = tuple(known.values())
 						assert self._active_run is not None
-						self._set_active_run(
+						count = len(self._applicant_results)
+						self._transition_run(
 							replace(
 								self._active_run,
 								phase="fetching",
 								progress=progress,
 								updated_at=self._clock(),
-							)
+							),
+							RunEventKind.PROGRESS,
+							progress=progress,
+							result_count=count,
 						)
-						count = len(self._applicant_results)
-					self._emit(run_id, RunEventKind.PROGRESS, progress=progress, result_count=count)
 				with self._lock:
 					progress = (self._active_run.progress if self._active_run else 0) or 0
 					state = "stopped" if cancel_event.is_set() else "completed"
 					assert self._active_run is not None
-					self._set_active_run(
-						replace(
-							self._active_run,
-							state=state,
-							phase=state,
-							progress=progress if state == "stopped" else 100,
-							updated_at=self._clock(),
-							result=RunResult(category=state, item_count=len(self._applicant_results)),
-							permitted_next_actions=("start-new-run", "discard")
-							if state == "completed"
-							else ("resume", "discard"),
-						)
+					terminal_summary = replace(
+						self._active_run,
+						state=state,
+						phase=state,
+						progress=progress if state == "stopped" else 100,
+						updated_at=self._clock(),
+						result=RunResult(category=state, item_count=len(self._applicant_results)),
+						permitted_next_actions=("start-new-run", "discard")
+						if state == "completed"
+						else ("resume", "discard"),
 					)
 					if state == "stopped":
 						self._clear_recruiting_sensitive()
-				self._emit(run_id, RunEventKind.STATE_CHANGED, state=state)
+					self._transition_run(
+						terminal_summary,
+						RunEventKind.STATE_CHANGED,
+						state=state,
+					)
 			except BossAdapterFailure as failure:
 				self._record_recruiting_failure(run_id, self._adapter_error(failure, correlation_id))
 			except (OSError, RuntimeError) as failure:
@@ -815,7 +815,9 @@ class Application:
 	def _record_recruiting_failure(self, run_id: str, details: DomainErrorDetails) -> None:
 		with self._lock:
 			assert self._active_run is not None
-			self._set_active_run(
+			self._selected_prospect = None
+			self._last_error = details
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="recovery_required",
@@ -824,12 +826,7 @@ class Application:
 					updated_at=self._clock(),
 					error=details,
 					permitted_next_actions=self._recovery_actions(details.code),
-				)
-			)
-			self._selected_prospect = None
-			self._last_error = details
-			self._emit(
-				run_id,
+				),
 				RunEventKind.RECOVERY_REQUIRED,
 				code=details.code.value,
 				state="recovery_required",
@@ -915,7 +912,8 @@ class Application:
 			self._cancel_events[run_id] = cancel_event
 			self._run_workspace = workspace
 			now = self._clock()
-			self._set_active_run(
+			self._events[run_id] = []
+			self._transition_run(
 				RunSummary(
 					run_id=run_id,
 					state="running",
@@ -926,15 +924,15 @@ class Application:
 					created_at=now,
 					updated_at=now,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
 			)
 			self._job_results = ()
 			self._selected_job = None
 			self._selected_job_session_revision = None
 			self._ai_suggestion = None
 			self._last_error = None
-			self._events[run_id] = []
-		self._emit(run_id, RunEventKind.STATE_CHANGED, state="running")
 		self._start_search_worker(
 			run_id=run_id,
 			goal=goal,
@@ -971,20 +969,19 @@ class Application:
 					recoverable=False,
 				)
 			cancel_event.set()
-			self._set_active_run(
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="stopping",
 					phase="stopping",
 					updated_at=self._clock(),
 					permitted_next_actions=(),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="stopping",
 			)
 			if workspace is WorkspaceKind.RECRUITING:
 				self._clear_recruiting_sensitive()
-			# Emit while holding the same re-entrant lock so the worker cannot publish
-			# the terminal "stopped" event before the observable "stopping" transition.
-			self._emit(command.run_id, RunEventKind.STATE_CHANGED, state="stopping")
 		return CommandResult(snapshot=self.query(CurrentStateQuery(), context), resource_ref=command.run_id)
 
 	def _resume_run(
@@ -1054,7 +1051,7 @@ class Application:
 					)
 			cancel_event = threading.Event()
 			self._cancel_events[command.run_id] = cancel_event
-			self._set_active_run(
+			self._transition_run(
 				replace(
 					self._active_run,
 					state="running",
@@ -1065,11 +1062,13 @@ class Application:
 					result=None,
 					error=None,
 					permitted_next_actions=("cancel",),
-				)
+				),
+				RunEventKind.STATE_CHANGED,
+				state="running",
+				phase="resuming",
 			)
 			self._last_error = None
 			self._invalidate_write_intent("Run 已恢复，本次旧确认已取消。")
-		self._emit(command.run_id, RunEventKind.STATE_CHANGED, state="running", phase="resuming")
 		if kind == "job-search":
 			assert goal is not None
 			self._job_results = ()
@@ -1575,7 +1574,8 @@ class Application:
 							recovery_action="检查保存的进度，然后明确选择恢复或丢弃",
 							correlation_id=context.correlation_id,
 						)
-						self._set_active_run(
+						self._last_error = details
+						self._transition_run(
 							replace(
 								persisted_run,
 								state="recovery_required",
@@ -1584,11 +1584,7 @@ class Application:
 								updated_at=self._clock(),
 								error=details,
 								permitted_next_actions=("resume", "discard"),
-							)
-						)
-						self._last_error = details
-						self._emit(
-							persisted_run.run_id,
+							),
 							RunEventKind.RECOVERY_REQUIRED,
 							code=details.code.value,
 							state="recovery_required",
