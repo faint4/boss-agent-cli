@@ -19,6 +19,7 @@ from boss_agent_cli.application.contracts import (
 	CancelWriteIntentCommand,
 	ConnectPlatformSessionCommand,
 	ConfirmWriteIntentCommand,
+	DiscardRunCommand,
 	DomainError,
 	InspectJobCommand,
 	InspectRecruitingProspectCommand,
@@ -27,6 +28,7 @@ from boss_agent_cli.application.contracts import (
 	LogoutPlatformSessionCommand,
 	PrepareJobGreetingCommand,
 	PrepareRecruitingReplyCommand,
+	ResumeRunCommand,
 	SelectRecruitingOpeningCommand,
 	SetShortlistedCommand,
 	StartInboundApplicantsCommand,
@@ -191,7 +193,7 @@ INTENT_ID = FieldDefinition(
 RUN_ID = FieldDefinition(
 	"run_id",
 	"string",
-	"要取消的 Recoverable Run ID",
+	"要操作的 Recoverable Run ID",
 	minimum_length=1,
 	maximum_length=128,
 )
@@ -381,6 +383,16 @@ WEB_COMMANDS = {
 			"/api/v1/commands/cancel-run",
 			(RUN_ID,),
 			lambda payload: CancelRunCommand(str(payload["run_id"])),
+		),
+		WebCommandDefinition(
+			"/api/v1/commands/resume-run",
+			(RUN_ID,),
+			lambda payload: ResumeRunCommand(str(payload["run_id"])),
+		),
+		WebCommandDefinition(
+			"/api/v1/commands/discard-run",
+			(RUN_ID,),
+			lambda payload: DiscardRunCommand(str(payload["run_id"])),
 		),
 		WebCommandDefinition(
 			"/api/v1/commands/inspect-job",

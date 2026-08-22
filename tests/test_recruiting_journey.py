@@ -185,7 +185,7 @@ def test_partial_applicants_stop_in_explicit_recovery_without_loading_context(tm
 	boss.search_failure = failure_code
 
 	application.execute(StartInboundApplicantsCommand(), _context())
-	snapshot = _wait_for_state(application, "recovery")
+	snapshot = _wait_for_state(application, "recovery_required")
 
 	assert snapshot.error is not None
 	assert snapshot.error.code is failure_code
@@ -220,10 +220,10 @@ def test_cancelling_applicant_read_clears_transient_results(tmp_path) -> None:
 		time.sleep(0.01)
 
 	application.execute(CancelRunCommand(started.resource_ref or ""), _context())
-	cancelled = _wait_for_state(application, "cancelled")
+	stopped = _wait_for_state(application, "stopped")
 	gate.set()
 
-	assert cancelled.recruiting is not None
-	assert cancelled.recruiting.applicants == ()
-	assert cancelled.recruiting.selected_prospect is None
-	assert cancelled.sensitive_content_present is False
+	assert stopped.recruiting is not None
+	assert stopped.recruiting.applicants == ()
+	assert stopped.recruiting.selected_prospect is None
+	assert stopped.sensitive_content_present is False

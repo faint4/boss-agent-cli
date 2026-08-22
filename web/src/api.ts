@@ -42,6 +42,31 @@ export async function loadSnapshot(): Promise<ApplicationSnapshot> {
   return body.snapshot;
 }
 
+export async function loadRunUpdates(runId: string, afterCursor: number): Promise<{
+  snapshot: ApplicationSnapshot;
+  cursor: number;
+}> {
+  const token = await authenticate();
+  const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/events?after_cursor=${afterCursor}`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "text/event-stream" },
+  });
+  if (!response.ok) throw new Error("无法继续读取任务进度，请重新读取服务端状态。");
+  const body = await response.text();
+  let cursor = afterCursor;
+  let snapshot: ApplicationSnapshot | null = null;
+  for (const frame of body.split("\n\n")) {
+    const id = frame.split("\n").find((line) => line.startsWith("id: "))?.slice(4);
+    const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
+    if (id !== undefined) cursor = Math.max(cursor, Number(id));
+    if (data !== undefined) {
+      const decoded = JSON.parse(data) as { snapshot?: ApplicationSnapshot };
+      if (decoded.snapshot) snapshot = decoded.snapshot;
+    }
+  }
+  if (!snapshot) throw new Error("任务事件流缺少权威状态，请重新读取。");
+  return { snapshot, cursor };
+}
+
 function nextRequestId(): string {
   return crypto.randomUUID();
 }
@@ -102,6 +127,14 @@ export function inspectRecruitingProspect(reference: string): Promise<Applicatio
 
 export function cancelRun(runId: string): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/cancel-run", { run_id: runId });
+}
+
+export function resumeRun(runId: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/resume-run", { run_id: runId });
+}
+
+export function discardRun(runId: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/discard-run", { run_id: runId });
 }
 
 export function inspectJob(reference: string): Promise<ApplicationSnapshot> {

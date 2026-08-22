@@ -153,13 +153,14 @@ def test_running_search_is_cancellable_and_keeps_completed_batches(tmp_path) -> 
 			break
 		time.sleep(0.01)
 
-	cancelling = application.execute(CancelRunCommand(run_id="search-1"), _context()).snapshot
-	cancelled = _wait_for_state(application, "cancelled")
+	application.execute(CancelRunCommand(run_id="search-1"), _context())
+	stopped = _wait_for_state(application, "stopped")
 
-	assert cancelling.active_run is not None
-	assert cancelling.active_run.state == "cancelling"
-	assert cancelled.job_seeking is not None
-	assert cancelled.job_seeking.results == (JOB,)
+	assert stopped.active_run is not None
+	assert stopped.active_run.state == "stopped"
+	assert stopped.job_seeking is not None
+	assert stopped.job_seeking.results == (JOB,)
+	assert "stopping" in [dict(event.payload).get("state") for event in application.events("search-1", after_cursor=0, context=_context())]
 	assert boss.search_calls == 1
 
 
@@ -182,7 +183,7 @@ def test_partial_search_stops_at_typed_recoverable_failures(tmp_path, failure_co
 	application.execute(UpdateJobSearchGoalCommand(goal=GOAL), _context())
 
 	application.execute(StartJobSearchCommand(), _context())
-	snapshot = _wait_for_state(application, "recovery")
+	snapshot = _wait_for_state(application, "recovery_required")
 
 	assert snapshot.error is not None
 	assert snapshot.error.code is failure_code

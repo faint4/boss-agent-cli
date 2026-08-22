@@ -13,6 +13,18 @@ export type RunSummary = {
   state: string;
   progress: number | null;
   wait_reason: string | null;
+  workspace?: "job-seeking" | "recruiting" | null;
+  kind?: string;
+  phase?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  result?: {
+    category: string;
+    item_count: number;
+    remote_write_may_have_occurred: boolean;
+  } | null;
+  error?: DomainError | null;
+  permitted_next_actions?: string[];
 };
 
 export type JobSearchGoal = {
@@ -123,7 +135,11 @@ export function deriveView(snapshot: ApplicationSnapshot): SnapshotView {
   if (snapshot.pending_write_intent !== null) {
     return "ready";
   }
-  if (snapshot.platform_session === "recovery" || snapshot.error?.recoverable) {
+  if (
+    snapshot.platform_session === "recovery" ||
+    snapshot.error?.recoverable ||
+    snapshot.active_run?.state === "recovery_required"
+  ) {
     return "recovery";
   }
   if (snapshot.error) {

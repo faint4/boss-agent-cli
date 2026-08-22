@@ -573,11 +573,29 @@ def test_authenticated_job_journey_api_exposes_progress_detail_shortlist_and_eve
 			headers=headers,
 			body={"request_id": "shortlist-1", "reference": "job-1", "shortlisted": True},
 		)
-		events_status, _, events_body = _request(
+		events_status, event_headers, events_body = _request(
 			server,
 			"GET",
 			"/api/v1/runs/search-api-1/events?after_cursor=0",
 			headers={"Authorization": f"Bearer {token}"},
+		)
+		resumed_status, _, resumed_body = _request(
+			server,
+			"GET",
+			"/api/v1/runs/search-api-1/events",
+			headers={"Authorization": f"Bearer {token}", "Last-Event-ID": "2"},
+		)
+		run_status, _, run_body = _request(
+			server,
+			"GET",
+			"/api/v1/runs/search-api-1",
+			headers={"Authorization": f"Bearer {token}"},
+		)
+		conflict_status, _, conflict_body = _request(
+			server,
+			"GET",
+			"/api/v1/runs/search-api-1/events?after_cursor=1",
+			headers={"Authorization": f"Bearer {token}", "Last-Event-ID": "2"},
 		)
 	finally:
 		server.close()
@@ -586,7 +604,17 @@ def test_authenticated_job_journey_api_exposes_progress_detail_shortlist_and_eve
 	assert json.loads(state_body)["snapshot"]["job_seeking"]["results"][0]["reference"] == "job-1"
 	assert json.loads(inspect_body)["snapshot"]["job_seeking"]["selected_job"]["match_reasons"]
 	assert json.loads(shortlist_body)["snapshot"]["job_seeking"]["shortlist"][0]["reference"] == "job-1"
-	assert len(json.loads(events_body)["events"]) == 3
+	assert event_headers["Content-Type"] == "text/event-stream; charset=utf-8"
+	assert events_body.count(b"event: run-event\n") == 3
+	assert b"event: snapshot\n" in events_body
+	assert b'"active_run":{"run_id":"search-api-1","state":"completed"' in events_body
+	assert resumed_status == 200
+	assert b"id: 1\n" not in resumed_body and b"id: 2\n" not in resumed_body
+	assert b"id: 3\n" in resumed_body and b"event: snapshot\n" in resumed_body
+	assert run_status == 200
+	assert json.loads(run_body)["run"]["run_id"] == "search-api-1"
+	assert conflict_status == 400
+	assert json.loads(conflict_body)["error"]["code"] == "INVALID_REQUEST"
 
 
 def test_job_journey_api_rejects_extra_fields_without_starting_a_search(tmp_path: Path):

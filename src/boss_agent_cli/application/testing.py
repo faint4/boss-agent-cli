@@ -15,6 +15,7 @@ from boss_agent_cli.application.contracts import (
 	RecruitingApplicantBatch,
 	RecruitingOpening,
 	RecruitingProspectContext,
+	RunSummary,
 	PlatformSessionState,
 	WorkspaceKind,
 )
@@ -32,6 +33,7 @@ class InMemoryWorkspaceStore:
 		self._local_session_id = local_session_id
 		self._active_workspace = active_workspace
 		self._run_events = dict(run_events or {})
+		self._runs: dict[WorkspaceKind, RunSummary] = {}
 		self._last_transition: str | None = None
 		self._sensitive: dict[WorkspaceKind, bool] = {}
 		self._job_search_goal: JobSearchGoal | None = None
@@ -56,8 +58,24 @@ class InMemoryWorkspaceStore:
 		self.active_workspace(local_session_id)
 		return self._last_transition
 
-	def read_events(self, run_id: str) -> tuple[ApplicationEvent, ...]:
+	def save_run(self, summary: RunSummary) -> None:
+		if summary.workspace is None:
+			raise ValueError("run workspace is required")
+		self._runs[summary.workspace] = summary
+
+	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None:
+		return self._runs.get(workspace)
+
+	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None:
+		self._run_events[event.run_id] = (*self._run_events.get(event.run_id, ()), event)
+
+	def read_events(self, workspace: WorkspaceKind, run_id: str) -> tuple[ApplicationEvent, ...]:
 		return self._run_events[run_id]
+
+	def discard_run(self, workspace: WorkspaceKind, run_id: str) -> None:
+		if workspace in self._runs and self._runs[workspace].run_id == run_id:
+			del self._runs[workspace]
+		self._run_events.pop(run_id, None)
 
 	def load_job_search_goal(self) -> JobSearchGoal | None:
 		return self._job_search_goal

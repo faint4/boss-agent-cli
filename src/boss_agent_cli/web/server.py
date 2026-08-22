@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
 from types import TracebackType
 from typing import Any
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from boss_agent_cli.application import (
 	Application,
@@ -102,6 +102,14 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 	def _send_json(self, status: int, payload: object, *, include_body: bool = True) -> None:
 		body = json.dumps(payload, default=_json_default, separators=(",", ":")).encode("utf-8")
 		self._send_bytes(status, body, "application/json", include_body=include_body)
+
+	def _send_sse(self, payload: bytes, *, include_body: bool = True) -> None:
+		self._send_bytes(
+			HTTPStatus.OK,
+			payload,
+			"text/event-stream; charset=utf-8",
+			include_body=include_body,
+		)
 
 	def _send_error(self, status: int, code: str, message: str, *, include_body: bool = True) -> None:
 		self._send_json(status, {"error": {"code": code, "message": message}}, include_body=include_body)
@@ -267,24 +275,20 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			{"schema_version": "1", "snapshot": result.snapshot, "resource_ref": result.resource_ref},
 		)
 
-	def _handle_events(self, path: str, query: str, *, include_body: bool) -> None:
-		run_id = unquote(path.removeprefix("/api/v1/runs/").removesuffix("/events"))
-		if not run_id or "/" in run_id or len(run_id) > 128:
+	def _run_id(self, path: str, *, events: bool = False) -> str | None:
+		suffix = "/events" if events else ""
+		run_id = unquote(path.removeprefix("/api/v1/runs/").removesuffix(suffix))
+		return run_id if run_id and "/" not in run_id and len(run_id) <= 128 else None
+
+	def _handle_run(self, path: str, *, include_body: bool) -> None:
+		run_id = self._run_id(path)
+		if run_id is None:
 			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
 			return
 		try:
-			values = dict(part.split("=", 1) for part in query.split("&") if part)
-			after_cursor = int(values.get("after_cursor", "0"))
-			if set(values) - {"after_cursor"} or after_cursor < 0:
-				raise ValueError
-		except (ValueError, TypeError):
-			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
-			return
-		try:
-			events = self.owner.application.events(
+			run = self.owner.application.run_summary(
 				run_id,
-				after_cursor=after_cursor,
-				context=RequestContext(
+				RequestContext(
 					local_session_id=self.owner.authenticator.local_session_id,
 					correlation_id=self.owner.new_correlation_id(),
 				),
@@ -292,11 +296,52 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 		except DomainError as exc:
 			self._send_error(HTTPStatus.NOT_FOUND, exc.code.value, exc.message, include_body=include_body)
 			return
-		self._send_json(
-			HTTPStatus.OK,
-			{"schema_version": "1", "events": events},
-			include_body=include_body,
+		self._send_json(HTTPStatus.OK, {"schema_version": "1", "run": run}, include_body=include_body)
+
+	def _handle_events(self, path: str, query: str, *, include_body: bool) -> None:
+		run_id = self._run_id(path, events=True)
+		if run_id is None:
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
+			return
+		try:
+			values = parse_qs(query, keep_blank_values=True)
+			last_event_ids = self.headers.get_all("Last-Event-ID", failobj=[])
+			if set(values) - {"after_cursor"} or any(len(value) != 1 for value in values.values()):
+				raise ValueError
+			if len(last_event_ids) > 1 or (last_event_ids and "after_cursor" in values):
+				raise ValueError
+			cursor_value = last_event_ids[0] if last_event_ids else values.get("after_cursor", ["0"])[0]
+			after_cursor = int(cursor_value)
+			if after_cursor < 0:
+				raise ValueError
+		except (ValueError, TypeError):
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
+			return
+		context = RequestContext(
+			local_session_id=self.owner.authenticator.local_session_id,
+			correlation_id=self.owner.new_correlation_id(),
 		)
+		try:
+			events = self.owner.application.events(run_id, after_cursor=after_cursor, context=context)
+		except DomainError as exc:
+			self._send_error(HTTPStatus.NOT_FOUND, exc.code.value, exc.message, include_body=include_body)
+			return
+		snapshot = self.owner.application.query(CurrentStateQuery(), context)
+		frames: list[str] = []
+		for event in events:
+			data = json.dumps(
+				{"schema_version": "1", "event": event, "snapshot": snapshot},
+				default=_json_default,
+				separators=(",", ":"),
+			)
+			frames.append(f"id: {event.cursor}\nevent: run-event\ndata: {data}\n\n")
+		snapshot_data = json.dumps(
+			{"schema_version": "1", "run_id": run_id, "snapshot": snapshot},
+			default=_json_default,
+			separators=(",", ":"),
+		)
+		frames.append(f"event: snapshot\ndata: {snapshot_data}\n\n")
+		self._send_sse("".join(frames).encode("utf-8"), include_body=include_body)
 
 	def _handle_api(self, method: str, path: str, *, include_body: bool) -> None:
 		if method == "POST" and path == "/api/v1/session":
@@ -309,6 +354,9 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			return
 		if method in {"GET", "HEAD"} and path.startswith("/api/v1/runs/") and path.endswith("/events"):
 			self._handle_events(path, urlsplit(self.path).query, include_body=include_body)
+			return
+		if method in {"GET", "HEAD"} and path.startswith("/api/v1/runs/"):
+			self._handle_run(path, include_body=include_body)
 			return
 		if method == "POST" and path.startswith("/api/v1/commands/"):
 			self._handle_command(path)
