@@ -8,6 +8,7 @@ from typing import Any
 from boss_agent_cli.application import Application, WorkspaceKind
 from boss_agent_cli.auth.browser import login_via_browser
 from boss_agent_cli.web.dpapi import CredentialProtector, default_credential_protector
+from boss_agent_cli.web.boss_read import BossReadAdapter
 from boss_agent_cli.web.platform_session import LoginProvider, PlatformSessionManager, WorkspaceSessionStore
 from boss_agent_cli.web.workspace import WorkspaceRegistry, default_product_root
 
@@ -33,4 +34,4 @@ def create_application(
 		store=WorkspaceSessionStore(registry=registry, protector=protector or default_credential_protector()),
 		login_provider=login_provider or _official_boss_login,
 	)
-	return Application(workspace_store=registry, credential_store=sessions, boss=sessions)
+	return Application(workspace_store=registry, credential_store=sessions, boss=BossReadAdapter(sessions))

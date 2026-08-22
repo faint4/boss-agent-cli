@@ -95,6 +95,82 @@ class LogoutPlatformSessionCommand:
 
 
 @dataclass(frozen=True)
+class JobSearchGoal:
+	objective: str
+	keyword: str
+	city: str = ""
+	salary: str = ""
+	experience: str = ""
+	education: str = ""
+
+
+@dataclass(frozen=True)
+class UpdateJobSearchGoalCommand:
+	goal: JobSearchGoal
+
+
+@dataclass(frozen=True)
+class StartJobSearchCommand:
+	pass
+
+
+@dataclass(frozen=True)
+class CancelRunCommand:
+	run_id: str
+
+
+@dataclass(frozen=True)
+class InspectJobCommand:
+	reference: str
+
+
+@dataclass(frozen=True)
+class SetShortlistedCommand:
+	reference: str
+	shortlisted: bool
+
+
+@dataclass(frozen=True)
+class JobSummary:
+	reference: str
+	title: str
+	company: str
+	location: str = ""
+	salary: str = ""
+	experience: str = ""
+	education: str = ""
+
+
+@dataclass(frozen=True)
+class JobSourceDetail:
+	job: JobSummary
+	description: str = ""
+	company_stage: str = ""
+	company_size: str = ""
+	recruiter: str = ""
+
+
+@dataclass(frozen=True)
+class JobDetailView:
+	source: JobSourceDetail
+	match_reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class JobSearchBatch:
+	items: tuple[JobSummary, ...]
+	progress: int
+
+
+@dataclass(frozen=True)
+class JobSeekingState:
+	goal: JobSearchGoal | None = None
+	results: tuple[JobSummary, ...] = ()
+	selected_job: JobDetailView | None = None
+	shortlist: tuple[JobSummary, ...] = ()
+
+
+@dataclass(frozen=True)
 class RunSummary:
 	run_id: str
 	state: str
@@ -132,6 +208,7 @@ class ApplicationStateSnapshot:
 	pending_write_intent: WriteIntentSummary | None = None
 	last_transition: str | None = None
 	error: DomainErrorDetails | None = None
+	job_seeking: JobSeekingState | None = None
 
 
 @dataclass(frozen=True)

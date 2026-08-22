@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from boss_agent_cli.application import ApplicationEvent, WorkspaceKind
+from boss_agent_cli.application import ApplicationEvent, JobSearchGoal, JobSummary, WorkspaceKind
 
 
 @dataclass(frozen=True)
@@ -149,3 +149,84 @@ class WorkspaceRegistry:
 
 	def read_events(self, run_id: str) -> tuple[ApplicationEvent, ...]:
 		raise KeyError(run_id)
+
+	def save_job_search_goal(self, goal: JobSearchGoal) -> None:
+		self.write_local_state(
+			WorkspaceKind.JOB_SEEKING,
+			"job-search-goal",
+			json.dumps(
+				{
+					"objective": goal.objective,
+					"keyword": goal.keyword,
+					"city": goal.city,
+					"salary": goal.salary,
+					"experience": goal.experience,
+					"education": goal.education,
+				},
+				ensure_ascii=False,
+				sort_keys=True,
+			),
+		)
+
+	def load_job_search_goal(self) -> JobSearchGoal | None:
+		value = self.read_local_state(WorkspaceKind.JOB_SEEKING, "job-search-goal")
+		if value is None:
+			return None
+		try:
+			payload = json.loads(value)
+			return JobSearchGoal(
+				objective=str(payload["objective"]),
+				keyword=str(payload["keyword"]),
+				city=str(payload.get("city", "")),
+				salary=str(payload.get("salary", "")),
+				experience=str(payload.get("experience", "")),
+				education=str(payload.get("education", "")),
+			)
+		except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+			return None
+
+	def save_job_shortlist(self, items: tuple[JobSummary, ...]) -> None:
+		self.write_local_state(
+			WorkspaceKind.JOB_SEEKING,
+			"job-shortlist",
+			json.dumps(
+				[
+					{
+						"reference": item.reference,
+						"title": item.title,
+						"company": item.company,
+						"location": item.location,
+						"salary": item.salary,
+						"experience": item.experience,
+						"education": item.education,
+					}
+					for item in items
+				],
+				ensure_ascii=False,
+				sort_keys=True,
+			),
+		)
+
+	def load_job_shortlist(self) -> tuple[JobSummary, ...]:
+		value = self.read_local_state(WorkspaceKind.JOB_SEEKING, "job-shortlist")
+		if value is None:
+			return ()
+		try:
+			payload = json.loads(value)
+			if not isinstance(payload, list):
+				return ()
+			return tuple(
+				JobSummary(
+					reference=str(item["reference"]),
+					title=str(item["title"]),
+					company=str(item["company"]),
+					location=str(item.get("location", "")),
+					salary=str(item.get("salary", "")),
+					experience=str(item.get("experience", "")),
+					education=str(item.get("education", "")),
+				)
+				for item in payload
+				if isinstance(item, dict)
+			)
+		except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+			return ()

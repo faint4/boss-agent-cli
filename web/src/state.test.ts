@@ -12,6 +12,7 @@ const emptySnapshot: ApplicationSnapshot = {
   pending_write_intent: null,
   last_transition: null,
   error: null,
+  job_seeking: null,
 };
 
 describe("deriveView", () => {

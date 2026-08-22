@@ -159,6 +159,18 @@ class PlatformSessionManager:
 	def probe_session(self, workspace: WorkspaceKind) -> PlatformSessionState:
 		return self.platform_session_state(workspace)
 
+	def active_credential(self, workspace: WorkspaceKind) -> dict[str, Any] | None:
+		"""Return a defensive in-process copy for the trusted BOSS read adapter."""
+
+		with self._lock:
+			if workspace is not self._active_workspace or self._active_credential is None:
+				return None
+			try:
+				value = json.loads(self._active_credential)
+			except (UnicodeDecodeError, json.JSONDecodeError):
+				return None
+			return dict(value) if isinstance(value, dict) else None
+
 	def wait_for_idle(self, *, timeout: float) -> bool:
 		with self._lock:
 			threads = tuple(self._threads)
