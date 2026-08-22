@@ -255,6 +255,9 @@ module = [
 	"boss_agent_cli.application.contracts",
 	"boss_agent_cli.application.module",
 	"boss_agent_cli.application.testing",
+	"boss_agent_cli.application.job_surface",
+	"boss_agent_cli.commands.job",
+	"boss_agent_cli.job_runtime",
 ]
 disallow_untyped_defs = true
 disallow_any_generics = true

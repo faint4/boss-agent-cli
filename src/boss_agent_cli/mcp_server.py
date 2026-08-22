@@ -9,7 +9,9 @@ import argparse
 import asyncio
 import json
 import subprocess
+import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mcp.server import Server
@@ -18,6 +20,9 @@ from mcp.types import TextContent, Tool
 
 from boss_agent_cli.mcp_args import _build_args
 from boss_agent_cli.mcp_tools import TOOLS
+from boss_agent_cli.application import DomainError
+from boss_agent_cli.application.job_surface import JobSeekingSurface, domain_error_payload
+from boss_agent_cli.job_runtime import create_job_seeking_surface
 
 # 向后兼容的再导出：这些符号在拆分前属于本模块，`mcp-server/server.py` wrapper
 # 与既有测试仍按 `boss_agent_cli.mcp_server.<name>` 取用。本模块自身不再使用它们，
@@ -76,6 +81,11 @@ DEFAULT_MESSAGE_PATH = "/messages/"
 DEFAULT_BOSS_BIN = "boss"
 _BOSS_BIN = DEFAULT_BOSS_BIN
 _BOSS_GLOBAL_ARGS: list[str] = []
+_JOB_DATA_DIR = Path("~/.boss-agent").expanduser()
+_JOB_PLATFORM = "zhipin"
+_JOB_ROLE = "candidate"
+_JOB_SURFACE: JobSeekingSurface | None = None
+_JOB_SURFACE_LOCK = threading.Lock()
 
 
 def _configure_boss_invocation(
@@ -86,7 +96,7 @@ def _configure_boss_invocation(
 	role: str | None = None,
 ) -> None:
 	"""Configure global flags passed from the MCP host to the underlying boss CLI."""
-	global _BOSS_BIN, _BOSS_GLOBAL_ARGS
+	global _BOSS_BIN, _BOSS_GLOBAL_ARGS, _JOB_DATA_DIR, _JOB_PLATFORM, _JOB_ROLE, _JOB_SURFACE
 	_BOSS_BIN = boss_bin
 	args: list[str] = []
 	if data_dir:
@@ -96,6 +106,10 @@ def _configure_boss_invocation(
 	if role:
 		args.extend(["--role", role])
 	_BOSS_GLOBAL_ARGS = args
+	_JOB_DATA_DIR = Path(data_dir).expanduser() if data_dir else Path("~/.boss-agent").expanduser()
+	_JOB_PLATFORM = platform or "zhipin"
+	_JOB_ROLE = role or "candidate"
+	_JOB_SURFACE = None
 
 
 def _run_boss(*args: str) -> dict[str, Any]:
@@ -126,10 +140,72 @@ async def list_tools() -> list[Tool]:
 	return TOOLS
 
 
+def _job_surface() -> JobSeekingSurface:
+	global _JOB_SURFACE
+	with _JOB_SURFACE_LOCK:
+		if _JOB_SURFACE is None:
+			_JOB_SURFACE = create_job_seeking_surface(data_dir=_JOB_DATA_DIR, platform=_JOB_PLATFORM)
+	return _JOB_SURFACE
+
+
+def _run_job(arguments: dict[str, Any]) -> dict[str, Any]:
+	"""Invoke the shared application in process so MCP retains journey state."""
+
+	if _JOB_ROLE != "candidate" or _JOB_PLATFORM != "zhipin":
+		role_mismatch = _JOB_ROLE != "candidate"
+		return {
+			"ok": False,
+			"schema_version": "1.0",
+			"command": "job",
+			"data": None,
+			"pagination": None,
+			"error": {
+				"code": "WORKSPACE_MISMATCH" if role_mismatch else "UNSUPPORTED_CAPABILITY",
+				"message": (
+					"boss_job is available only in candidate role"
+					if role_mismatch
+					else "boss_job currently supports only the zhipin platform"
+				),
+				"recoverable": True,
+				"recovery_action": (
+					"Start MCP with --role candidate"
+					if role_mismatch
+					else "Start MCP with --platform zhipin or use a legacy platform-specific tool"
+				),
+			},
+			"hints": None,
+		}
+	try:
+		data = _job_surface().invoke(arguments)
+	except DomainError as exc:
+		error = domain_error_payload(exc)
+		return {
+			"ok": False,
+			"schema_version": "1.0",
+			"command": "job",
+			"data": None,
+			"pagination": None,
+			"error": error,
+			"hints": None,
+		}
+	return {
+		"ok": True,
+		"schema_version": "1.0",
+		"command": "job",
+		"data": data,
+		"pagination": None,
+		"error": None,
+		"hints": None,
+	}
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-	args = _build_args(name, arguments)
-	result = _run_boss(*args)
+	if name == "boss_job":
+		result = _run_job(arguments)
+	else:
+		args = _build_args(name, arguments)
+		result = _run_boss(*args)
 	return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False, indent=2))]
 
 

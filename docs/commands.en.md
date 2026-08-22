@@ -12,7 +12,7 @@ boss schema --format anthropic-tools   # export Claude Tool Use definitions
 boss <cmd> --help                      # options for a single command
 ```
 
-`boss schema` currently exposes 39 top-level commands, plus 9 first-level recruiter
+`boss schema` currently exposes 40 top-level commands, plus 9 first-level recruiter
 subcommands under `hr`, grouped below by workflow stage.
 
 Compatibility setting: `boss config set operating_mode assisted|research`. Both modes can call every implemented capability; schema still reports risk/data classifications, and missing platform implementations return `NOT_SUPPORTED`.
@@ -23,6 +23,20 @@ Top-level commands and `boss wizard` are two parallel capability surfaces. The s
 
 - **Single-shot, stateless capability calls** → top-level commands (`boss search`, `boss detail`, `boss greet`, …)
 - **Cross-step state, resumability, or handing guidance to a human mid-flow** → `boss wizard` (goals listed under `wizard_catalog`)
+
+The Job-Seeking Core Journey also has a shared application-contract entry point: local Web calls the application commands directly, CLI uses `boss job --input-json`, and MCP uses `boss_job`. All three share goal, search, inspect, shortlist, write-intent prepare/confirm/cancel, and error semantics. The shared entry point currently supports `zhipin`; other platforms keep their compatibility commands. A CLI process does not retain visible results or pending write intents after it exits, so put a complete flow in one `action=run` `steps` array. The MCP server retains that state for its process lifetime.
+
+```bash
+boss --json job --input-json '{"action":"run","steps":[
+  {"action":"goal","objective":"Find a backend role","keyword":"Python","city":"Shanghai"},
+  {"action":"search"},
+  {"action":"inspect","reference":"$first"},
+  {"action":"prepare-greeting","reference":"$first","message":"Hello"},
+  {"action":"confirm","intent_id":"$pending"}
+]}'
+```
+
+`$first` and `$pending` are only adapter shorthands for the first currently visible result and current pending intent in the same process; they do not bypass application validation. The existing `boss search`, `boss detail`, and `boss greet` names remain as single-shot compatibility commands. Migrate to `boss job` / `boss_job` when the Core Journey must exactly match Web's server-owned confirmation, recovery, and local-decision semantics. `boss_job` confirmation accepts only the application-issued `intent_id`; it cannot replace the reviewed message.
 
 Envelope `hints` splits by audience the same way (`conventions.hints`):
 
@@ -38,6 +52,7 @@ In a TTY only `operator_actions` is rendered, to stderr; `next_actions` stays an
 | Command | Description |
 |---------|-------------|
 | `boss` / `boss wizard` | Start the TTY wizard; use `--input-json` for agent workflows and `--status/--resume/--stop <run_id>` for persisted runs |
+| `boss job --input-json <JSON>` | Invoke the same Job-Seeking application contract as local Web; use `action=run` plus `steps` for a complete CLI flow |
 | `boss schema` | Full tool self-description JSON (agents call this first) |
 | `boss platforms` | Local platform registry and capability status (no network; `--platform` filter, `--capability` reverse lookup, includes `capability_status_legend`) |
 | `boss login` | User-triggered login (Cookie / CDP / QR / browser fallback per platform) |

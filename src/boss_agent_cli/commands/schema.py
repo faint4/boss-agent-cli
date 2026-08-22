@@ -102,6 +102,7 @@ _CANDIDATE_COMMANDS = {
 	"stats",
 	"resume",
 	"ai",
+	"job",
 }
 
 _QIANCHENG_PLACEHOLDER_COMMANDS = {
@@ -128,6 +129,13 @@ def _command_availability(
 	candidate_platforms: list[str],
 	recruiter_platforms: list[str],
 ) -> dict[str, Any]:
+	if cmd_name == "job":
+		return {
+			"roles": ["candidate"],
+			"candidate_platforms": ["zhipin"] if "zhipin" in candidate_platforms else [],
+			"recruiter_platforms": [],
+			"note": "共享应用合同当前使用本地 Web 的 BOSS 适配器；其他平台继续使用兼容命令。",
+		}
 	if cmd_name == "agent":
 		return {
 			"roles": ["candidate", "recruiter"],
@@ -282,7 +290,7 @@ def _format_mcp_tools(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 SCHEMA_DATA = {
 	"name": "boss-agent-cli",
-	"description": "面向真人和 Agent 的招聘平台 CLI，共 39 个顶层命令；所有已实现能力均可直接调用。",
+	"description": "面向真人和 Agent 的招聘平台 CLI，共 40 个顶层命令；所有已实现能力均可直接调用。",
 	"commands": {
 		"login": {
 			"description": "按当前平台登录（zhipin / zhilian）；两种兼容运行模式共享相同能力，平台风控仍会停止当前流程。",
@@ -361,6 +369,17 @@ SCHEMA_DATA = {
 				"--stop": {"type": "string", "default": None, "description": "停止指定 workflow run_id"},
 				"--timeout": {"type": "float", "default": None, "description": "workflow 超时秒数"},
 				"--max-retries": {"type": "int", "default": 0, "description": "可恢复步骤的最大重试次数"},
+			},
+		},
+		"job": {
+			"description": "通过 Web 同款共享应用合同运行求职主流程；单次 action 适合 MCP，CLI 完整流程使用 run + steps 保持进程内状态",
+			"args": [],
+			"options": {
+				"--input-json": {
+					"type": "string",
+					"default": '{"action":"state"}',
+					"description": "Job-Seeking action object；action=run 时传 steps 数组",
+				},
 			},
 		},
 		"search": {

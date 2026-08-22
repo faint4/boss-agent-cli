@@ -153,6 +153,44 @@ TOOLS = [
 		},
 	),
 	Tool(
+		name="boss_job",
+		description=(
+			"通过与本地 Web 相同的应用合同运行求职主流程；MCP 进程会保留搜索、详情和待确认写入状态"
+		),
+		inputSchema={
+			"type": "object",
+			"properties": {
+				"action": {
+					"type": "string",
+					"enum": [
+						"state", "goal", "search", "cancel-search", "inspect", "shortlist",
+						"prepare-greeting", "confirm", "cancel-write", "run",
+					],
+					"default": "state",
+					"description": "应用合同 action",
+				},
+				"objective": {"type": "string", "description": "goal 的求职目标；省略时使用 keyword"},
+				"keyword": {"type": "string", "description": "goal 的搜索关键词"},
+				"city": {"type": "string", "description": "goal 的城市"},
+				"salary": {"type": "string", "description": "goal 的薪资范围"},
+				"experience": {"type": "string", "description": "goal 的经验要求"},
+				"education": {"type": "string", "description": "goal 的学历要求"},
+				"reference": {"type": "string", "description": "可见职位的应用层 reference"},
+				"shortlisted": {"type": "boolean", "description": "是否加入本地候选清单", "default": True},
+				"message": {"type": "string", "description": "待审核的招呼文本，只在 prepare-greeting 使用"},
+				"intent_id": {"type": "string", "description": "应用层生成的写入意图 ID"},
+				"run_id": {"type": "string", "description": "cancel-search 使用的搜索 run ID"},
+				"timeout": {"type": "number", "description": "等待搜索终态的秒数，最大 120", "default": 30},
+				"steps": {
+					"type": "array",
+					"items": {"type": "object"},
+					"description": "CLI 兼容的进程内 action 数组；MCP 通常逐次调用",
+				},
+			},
+			"required": [],
+		},
+	),
+	Tool(
 		name="boss_status",
 		description="检查 BOSS 直聘登录态",
 		inputSchema={"type": "object", "properties": {}, "required": []},

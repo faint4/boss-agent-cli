@@ -32,6 +32,9 @@ def _build_args(tool_name: str, arguments: dict[str, Any]) -> list[str]:
 			args.extend(["--max-retries", str(arguments["max_retries"])])
 		return args
 
+	if name == "job":
+		return ["job", "--input-json", json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))]
+
 	if name == "search":
 		args = [name, arguments["query"]]
 		for opt in ("city", "salary", "experience", "education", "welfare"):
