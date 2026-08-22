@@ -149,6 +149,36 @@ jobs:
       - name: Run mypy
         run: uv run mypy src/boss_agent_cli
 
+  web:
+    name: Local Web shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Enable pinned package manager
+        run: corepack enable
+
+      - name: Install locked Web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Test and typecheck the React shell
+        working-directory: web
+        run: |
+          pnpm test
+          pnpm run typecheck
+
+      - name: Rebuild committed production assets
+        working-directory: web
+        run: pnpm run build
+
+      - name: Verify production assets are current
+        run: git diff --exit-code -- src/boss_agent_cli/web/static
+
   docker:
     # 容器镜像必须每次构建，否则会像此前那个无人引用的 Dockerfile 一样静默腐烂。
     #

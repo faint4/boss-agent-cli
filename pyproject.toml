@@ -67,6 +67,7 @@ crawl = [
 [project.scripts]
 boss = "boss_agent_cli.main:cli"
 boss-mcp = "boss_agent_cli.mcp_server:run"
+boss-web = "boss_agent_cli.web:run"
 
 [tool.hatch.build]
 exclude = [

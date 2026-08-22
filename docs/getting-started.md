@@ -18,6 +18,16 @@ uv sync --all-extras
 uv run patchright install chromium
 ```
 
+源码中的 Developer Preview Web 外壳可用一条命令启动：
+
+```bash
+uv run boss-web
+```
+
+该命令由 Python 在随机的 `127.0.0.1` 端口托管已构建的 React UI，并在服务就绪后打开浏览器。启动凭据仅用于本次进程且只保存在内存中。此路径目前只展示共享应用状态，不连接 Browser Bridge，也不会执行真实 BOSS workflow。
+
+修改 `web/` 下的前端源码后，使用 `cd web && pnpm install --frozen-lockfile && pnpm run build` 更新随 Python 包发布的生产资源。
+
 ## 2. 本地自检
 
 ```bash
@@ -95,6 +105,7 @@ uv run ruff check src/ tests/
 uv run mypy src/boss_agent_cli
 uv run boss --help
 uv run boss schema --format native
+cd web && pnpm test && pnpm run typecheck && pnpm run build
 ```
 
 如果只改文档，至少运行：

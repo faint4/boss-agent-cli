@@ -18,6 +18,16 @@ uv sync --all-extras
 uv run patchright install chromium
 ```
 
+Start the source-delivered Developer Preview Web shell with one command:
+
+```bash
+uv run boss-web
+```
+
+Python serves the production-built React UI on a random `127.0.0.1` port and opens the browser after the listener is ready. Startup credentials are process-scoped and memory-only. This path currently renders shared application state; it does not connect Browser Bridge or execute a real BOSS workflow.
+
+After changing frontend sources under `web/`, run `cd web && pnpm install --frozen-lockfile && pnpm run build` to update the production assets shipped in the Python package.
+
 ## 2. Local preflight
 
 ```bash
@@ -95,6 +105,7 @@ uv run ruff check src/ tests/
 uv run mypy src/boss_agent_cli
 uv run boss --help
 uv run boss schema --format native
+cd web && pnpm test && pnpm run typecheck && pnpm run build
 ```
 
 For documentation-only changes, run at least:
