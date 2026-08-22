@@ -59,3 +59,11 @@ _Avoid_: Pending action, batch approval
 **Recoverable Run**:
 A visible execution of a Core Journey that can stop without performing an unconfirmed Platform Write and can later resume from saved non-sensitive state.
 _Avoid_: Background job, automation task
+
+**Developer Preview**:
+The source-delivered Windows milestone used to validate both Core Journeys, security controls, and recovery behavior before an installer is offered to ordinary users.
+_Avoid_: Beta release, production release
+
+**First Product Release**:
+The first independently branded, installable Windows release that passes the complete functional, security, privacy, upgrade, and uninstall quality gates.
+_Avoid_: Developer Preview, portable bundle
