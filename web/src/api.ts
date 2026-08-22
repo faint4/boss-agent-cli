@@ -1,4 +1,4 @@
-import type { ApplicationSnapshot } from "./state";
+import type { ApplicationSnapshot, JobSearchGoal } from "./state";
 
 let sessionToken: string | null = null;
 
@@ -57,7 +57,8 @@ async function sendCommand(path: string, payload: Record<string, unknown>): Prom
     body: JSON.stringify({ request_id: nextRequestId(), ...payload }),
   });
   if (!response.ok) {
-    throw new Error("操作未完成，当前工作区未执行后续动作。请重试。");
+	const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+	throw new Error(body?.error?.message ?? "操作未完成，当前工作区未执行后续动作。请重试。");
   }
   const body = (await response.json()) as { snapshot: ApplicationSnapshot };
   return body.snapshot;
@@ -73,4 +74,24 @@ export function connectPlatformSession(): Promise<ApplicationSnapshot> {
 
 export function logoutPlatformSession(): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/logout-platform-session", {});
+}
+
+export function updateJobSearchGoal(goal: JobSearchGoal): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/update-job-search-goal", goal);
+}
+
+export function startJobSearch(): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/start-job-search", {});
+}
+
+export function cancelRun(runId: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/cancel-run", { run_id: runId });
+}
+
+export function inspectJob(reference: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/inspect-job", { reference });
+}
+
+export function setShortlisted(reference: string, shortlisted: boolean): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/set-shortlisted", { reference, shortlisted });
 }

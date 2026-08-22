@@ -13,10 +13,20 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from boss_agent_cli.application import (
+	Application,
+	JobSearchBatch,
+	JobSourceDetail,
+	JobSummary,
+	PlatformSessionState,
+	WorkspaceKind,
+)
+from boss_agent_cli.application.testing import FakeBossAdapter, InMemoryCredentialStore
 from boss_agent_cli.web.auth import StartupAuthenticator
 from boss_agent_cli.web.dpapi import CredentialProtectionError
 from boss_agent_cli.web.runtime import create_application
 from boss_agent_cli.web.server import LocalWebServer
+from boss_agent_cli.web.workspace import WorkspaceRegistry
 
 
 SECURITY_HEADERS = {
@@ -477,3 +487,108 @@ def test_cross_origin_command_cannot_switch_or_create_the_other_workspace(tmp_pa
 
 	assert status == 403
 	assert not (tmp_path / "data" / "workspaces" / "recruiting").exists()
+
+
+def test_authenticated_job_journey_api_exposes_progress_detail_shortlist_and_events(tmp_path: Path):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-api",
+		session_token_factory=lambda: "session-token",
+	)
+	job = JobSummary("job-1", "Python 后端工程师", "示例科技", "上海", "20-40K", "3-5年", "本科")
+	application = Application(
+		workspace_store=WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-api"),
+		credential_store=InMemoryCredentialStore(
+			{WorkspaceKind.JOB_SEEKING: PlatformSessionState.CONNECTED},
+		),
+		boss=FakeBossAdapter(
+			search_batches=(JobSearchBatch((job,), 100),),
+			details={"job-1": JobSourceDetail(job, "负责 Python 服务")},
+		),
+		run_id_factory=lambda: "search-api-1",
+	)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		goal_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/update-job-search-goal",
+			headers=headers,
+			body={
+				"request_id": "goal-1",
+				"objective": "寻找后端岗位",
+				"keyword": "Python",
+				"city": "上海",
+				"salary": "20-40K",
+				"experience": "3-5年",
+				"education": "本科",
+			},
+		)
+		start_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/start-job-search",
+			headers=headers,
+			body={"request_id": "start-1"},
+		)
+		deadline = time.monotonic() + 2
+		state_body = b""
+		while time.monotonic() < deadline:
+			_, _, state_body = _request(
+				server,
+				"GET",
+				"/api/v1/state",
+				headers={"Authorization": f"Bearer {token}"},
+			)
+			if json.loads(state_body)["snapshot"]["active_run"]["state"] == "completed":
+				break
+		inspect_status, _, inspect_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/inspect-job",
+			headers=headers,
+			body={"request_id": "inspect-1", "reference": "job-1"},
+		)
+		shortlist_status, _, shortlist_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/set-shortlisted",
+			headers=headers,
+			body={"request_id": "shortlist-1", "reference": "job-1", "shortlisted": True},
+		)
+		events_status, _, events_body = _request(
+			server,
+			"GET",
+			"/api/v1/runs/search-api-1/events?after_cursor=0",
+			headers={"Authorization": f"Bearer {token}"},
+		)
+	finally:
+		server.close()
+
+	assert (goal_status, start_status, inspect_status, shortlist_status, events_status) == (200, 200, 200, 200, 200)
+	assert json.loads(state_body)["snapshot"]["job_seeking"]["results"][0]["reference"] == "job-1"
+	assert json.loads(inspect_body)["snapshot"]["job_seeking"]["selected_job"]["match_reasons"]
+	assert json.loads(shortlist_body)["snapshot"]["job_seeking"]["shortlist"][0]["reference"] == "job-1"
+	assert len(json.loads(events_body)["events"]) == 3
+
+
+def test_job_journey_api_rejects_extra_fields_without_starting_a_search(tmp_path: Path):
+	with _running_server(tmp_path) as server:
+		token = _exchange(server)
+		status, _, body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/start-job-search",
+			headers=_command_headers(server, token),
+			body={"request_id": "start-1", "retry_risk_control": True},
+		)
+
+	assert status == 400
+	assert json.loads(body)["error"]["code"] == "INVALID_REQUEST"

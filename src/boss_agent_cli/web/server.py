@@ -19,12 +19,18 @@ from urllib.parse import quote, unquote, urlsplit
 
 from boss_agent_cli.application import (
 	Application,
+	CancelRunCommand,
 	ConnectPlatformSessionCommand,
 	CurrentStateQuery,
 	DomainError,
+	InspectJobCommand,
+	JobSearchGoal,
 	LogoutPlatformSessionCommand,
 	RequestContext,
+	SetShortlistedCommand,
+	StartJobSearchCommand,
 	SwitchWorkspaceCommand,
+	UpdateJobSearchGoalCommand,
 	WorkspaceKind,
 )
 from boss_agent_cli.web.auth import StartupAuthenticator
@@ -233,7 +239,16 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 		if not isinstance(request_id, str) or not request_id or len(request_id) > 128:
 			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
 			return
-		command: SwitchWorkspaceCommand | ConnectPlatformSessionCommand | LogoutPlatformSessionCommand
+		command: (
+			SwitchWorkspaceCommand
+			| ConnectPlatformSessionCommand
+			| LogoutPlatformSessionCommand
+			| UpdateJobSearchGoalCommand
+			| StartJobSearchCommand
+			| CancelRunCommand
+			| InspectJobCommand
+			| SetShortlistedCommand
+		)
 		if path == "/api/v1/commands/switch-workspace":
 			if set(payload) != {"request_id", "workspace"} or not isinstance(payload["workspace"], str):
 				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
@@ -253,6 +268,73 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
 				return
 			command = LogoutPlatformSessionCommand()
+		elif path == "/api/v1/commands/update-job-search-goal":
+			expected = {
+				"request_id",
+				"objective",
+				"keyword",
+				"city",
+				"salary",
+				"experience",
+				"education",
+			}
+			if set(payload) != expected or any(
+				not isinstance(payload[field], str) for field in expected - {"request_id"}
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = UpdateJobSearchGoalCommand(
+				goal=JobSearchGoal(
+					objective=str(payload["objective"]),
+					keyword=str(payload["keyword"]),
+					city=str(payload["city"]),
+					salary=str(payload["salary"]),
+					experience=str(payload["experience"]),
+					education=str(payload["education"]),
+				)
+			)
+		elif path == "/api/v1/commands/start-job-search":
+			if set(payload) != {"request_id"}:
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = StartJobSearchCommand()
+		elif path == "/api/v1/commands/cancel-run":
+			run_id = payload.get("run_id")
+			if (
+				set(payload) != {"request_id", "run_id"}
+				or not isinstance(run_id, str)
+				or not run_id
+				or len(run_id) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = CancelRunCommand(run_id=run_id)
+		elif path == "/api/v1/commands/inspect-job":
+			reference = payload.get("reference")
+			if (
+				set(payload) != {"request_id", "reference"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = InspectJobCommand(reference=reference)
+		elif path == "/api/v1/commands/set-shortlisted":
+			reference = payload.get("reference")
+			if (
+				set(payload) != {"request_id", "reference", "shortlisted"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+				or not isinstance(payload.get("shortlisted"), bool)
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = SetShortlistedCommand(
+				reference=reference,
+				shortlisted=bool(payload["shortlisted"]),
+			)
 		else:
 			self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found")
 			return
@@ -280,7 +362,41 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 				},
 			)
 			return
-		self._send_json(HTTPStatus.OK, {"schema_version": "1", "snapshot": result.snapshot})
+		self._send_json(
+			HTTPStatus.OK,
+			{"schema_version": "1", "snapshot": result.snapshot, "resource_ref": result.resource_ref},
+		)
+
+	def _handle_events(self, path: str, query: str, *, include_body: bool) -> None:
+		run_id = unquote(path.removeprefix("/api/v1/runs/").removesuffix("/events"))
+		if not run_id or "/" in run_id or len(run_id) > 128:
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
+			return
+		try:
+			values = dict(part.split("=", 1) for part in query.split("&") if part)
+			after_cursor = int(values.get("after_cursor", "0"))
+			if set(values) - {"after_cursor"} or after_cursor < 0:
+				raise ValueError
+		except (ValueError, TypeError):
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
+			return
+		try:
+			events = self.owner.application.events(
+				run_id,
+				after_cursor=after_cursor,
+				context=RequestContext(
+					local_session_id=self.owner.authenticator.local_session_id,
+					correlation_id=self.owner.new_correlation_id(),
+				),
+			)
+		except DomainError as exc:
+			self._send_error(HTTPStatus.NOT_FOUND, exc.code.value, exc.message, include_body=include_body)
+			return
+		self._send_json(
+			HTTPStatus.OK,
+			{"schema_version": "1", "events": events},
+			include_body=include_body,
+		)
 
 	def _handle_api(self, method: str, path: str, *, include_body: bool) -> None:
 		if method == "POST" and path == "/api/v1/session":
@@ -290,6 +406,9 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			return
 		if method in {"GET", "HEAD"} and path == "/api/v1/state":
 			self._handle_state(include_body=include_body)
+			return
+		if method in {"GET", "HEAD"} and path.startswith("/api/v1/runs/") and path.endswith("/events"):
+			self._handle_events(path, urlsplit(self.path).query, include_body=include_body)
 			return
 		if method == "POST" and path.startswith("/api/v1/commands/"):
 			self._handle_command(path)

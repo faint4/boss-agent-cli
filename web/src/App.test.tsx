@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { SnapshotPanel, WorkspaceControls } from "./App";
+import App, { JobJourney, SnapshotPanel, WorkspaceControls } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -14,6 +14,12 @@ const baseSnapshot: ApplicationSnapshot = {
   pending_write_intent: null,
   last_transition: null,
   error: null,
+  job_seeking: {
+    goal: null,
+    results: [],
+    selected_job: null,
+    shortlist: [],
+  },
 };
 
 function renderPanel(screen: SnapshotView, snapshot: ApplicationSnapshot): string {
@@ -103,5 +109,41 @@ describe("local Web shell states", () => {
 
     expect(stopping).toContain("正在安全退出");
     expect(recovery).toContain("重新连接 BOSS");
+  });
+
+  it("renders the complete read-only job journey and persisted shortlist", () => {
+    const job = {
+      reference: "job-1", title: "Python 后端工程师", company: "示例科技", location: "上海",
+      salary: "20-40K", experience: "3-5年", education: "本科",
+    };
+    const markup = renderToStaticMarkup(
+      <JobJourney
+        snapshot={{
+          ...baseSnapshot,
+          platform_session: "connected",
+          job_seeking: {
+            goal: { objective: "寻找后端岗位", keyword: "Python", city: "上海", salary: "", experience: "", education: "" },
+            results: [job],
+            selected_job: {
+              source: { job, description: "负责 Python 服务", company_stage: "", company_size: "", recruiter: "招聘者" },
+              match_reasons: ["职位原文包含关键词“Python”"],
+            },
+            shortlist: [job],
+          },
+        }}
+        busy={false}
+        onSaveGoal={() => undefined}
+        onSearch={() => undefined}
+        onCancel={() => undefined}
+        onInspect={() => undefined}
+        onShortlist={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("定义这次搜索");
+    expect(markup).toContain("开始只读搜索");
+    expect(markup).toContain("平台来源原文");
+    expect(markup).toContain("本地匹配理由");
+    expect(markup).toContain("1 个已收藏职位");
   });
 });
