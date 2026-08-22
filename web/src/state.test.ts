@@ -54,4 +54,21 @@ describe("deriveView", () => {
       }),
     ).toBe("error");
   });
+
+  it("keeps a terminal write outcome visible instead of hiding it behind recovery", () => {
+	const intent = {
+		intent_id: "intent-1", workspace: "job-seeking" as const, target_reference: "job-1",
+		target_label: "目标职位", action: "发送 BOSS 招呼", payload_preview: "您好", warnings: [],
+		expires_at: "2026-08-22T10:05:00+00:00", state: "uncertain" as const,
+		outcome_message: "请到 BOSS 官方页面核对。",
+	};
+	expect(deriveView({
+		...emptySnapshot,
+		pending_write_intent: intent,
+		error: {
+			code: "UNCERTAIN_REMOTE_OUTCOME", message: "结果不确定", recoverable: true,
+			recovery_action: "官方核对", correlation_id: "request-write",
+		},
+	})).toBe("ready");
+  });
 });

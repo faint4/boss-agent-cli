@@ -20,12 +20,15 @@ from urllib.parse import quote, unquote, urlsplit
 from boss_agent_cli.application import (
 	Application,
 	CancelRunCommand,
+	CancelWriteIntentCommand,
 	ConnectPlatformSessionCommand,
+	ConfirmWriteIntentCommand,
 	CurrentStateQuery,
 	DomainError,
 	InspectJobCommand,
 	JobSearchGoal,
 	LogoutPlatformSessionCommand,
+	PrepareJobGreetingCommand,
 	RequestContext,
 	SetShortlistedCommand,
 	StartJobSearchCommand,
@@ -248,6 +251,9 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			| CancelRunCommand
 			| InspectJobCommand
 			| SetShortlistedCommand
+			| PrepareJobGreetingCommand
+			| ConfirmWriteIntentCommand
+			| CancelWriteIntentCommand
 		)
 		if path == "/api/v1/commands/switch-workspace":
 			if set(payload) != {"request_id", "workspace"} or not isinstance(payload["workspace"], str):
@@ -335,6 +341,43 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 				reference=reference,
 				shortlisted=bool(payload["shortlisted"]),
 			)
+		elif path == "/api/v1/commands/prepare-job-greeting":
+			reference = payload.get("reference")
+			message = payload.get("message")
+			if (
+				set(payload) != {"request_id", "reference", "message"}
+				or not isinstance(reference, str)
+				or not reference
+				or len(reference) > 128
+				or not isinstance(message, str)
+				or not message.strip()
+				or len(message) > 1000
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = PrepareJobGreetingCommand(reference=reference, message=message)
+		elif path == "/api/v1/write-intents/confirm":
+			intent_id = payload.get("intent_id")
+			if (
+				set(payload) != {"request_id", "intent_id"}
+				or not isinstance(intent_id, str)
+				or not intent_id
+				or len(intent_id) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = ConfirmWriteIntentCommand(intent_id=intent_id)
+		elif path == "/api/v1/write-intents/cancel":
+			intent_id = payload.get("intent_id")
+			if (
+				set(payload) != {"request_id", "intent_id"}
+				or not isinstance(intent_id, str)
+				or not intent_id
+				or len(intent_id) > 128
+			):
+				self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request")
+				return
+			command = CancelWriteIntentCommand(intent_id=intent_id)
 		else:
 			self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found")
 			return
@@ -411,6 +454,9 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			self._handle_events(path, urlsplit(self.path).query, include_body=include_body)
 			return
 		if method == "POST" and path.startswith("/api/v1/commands/"):
+			self._handle_command(path)
+			return
+		if method == "POST" and path in {"/api/v1/write-intents/confirm", "/api/v1/write-intents/cancel"}:
 			self._handle_command(path)
 			return
 		self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found", include_body=include_body)

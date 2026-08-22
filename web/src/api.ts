@@ -95,3 +95,15 @@ export function inspectJob(reference: string): Promise<ApplicationSnapshot> {
 export function setShortlisted(reference: string, shortlisted: boolean): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/set-shortlisted", { reference, shortlisted });
 }
+
+export function prepareJobGreeting(reference: string, message: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/prepare-job-greeting", { reference, message });
+}
+
+export function confirmWriteIntent(intentId: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/write-intents/confirm", { intent_id: intentId });
+}
+
+export function cancelWriteIntent(intentId: string): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/write-intents/cancel", { intent_id: intentId });
+}

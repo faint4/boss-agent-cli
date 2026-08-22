@@ -15,10 +15,16 @@ import pytest
 
 from boss_agent_cli.application import (
 	Application,
+	CurrentStateQuery,
+	InspectJobCommand,
 	JobSearchBatch,
+	JobSearchGoal,
 	JobSourceDetail,
 	JobSummary,
 	PlatformSessionState,
+	RequestContext,
+	StartJobSearchCommand,
+	UpdateJobSearchGoalCommand,
 	WorkspaceKind,
 )
 from boss_agent_cli.application.testing import FakeBossAdapter, InMemoryCredentialStore
@@ -592,3 +598,85 @@ def test_job_journey_api_rejects_extra_fields_without_starting_a_search(tmp_path
 
 	assert status == 400
 	assert json.loads(body)["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_write_intent_routes_whitelist_fields_and_confirm_exactly_once(tmp_path: Path):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-write",
+		session_token_factory=lambda: "session-token",
+	)
+	job = JobSummary("job-1", "Python 后端工程师", "示例科技", "上海")
+	boss = FakeBossAdapter(
+		search_batches=(JobSearchBatch((job,), 100),),
+		details={"job-1": JobSourceDetail(job)},
+	)
+	application = Application(
+		workspace_store=WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-write"),
+		credential_store=InMemoryCredentialStore(
+			{WorkspaceKind.JOB_SEEKING: PlatformSessionState.CONNECTED},
+		),
+		boss=boss,
+		intent_id_factory=lambda: "intent-api-1",
+	)
+	context = RequestContext("local-session-write", "setup")
+	application.execute(UpdateJobSearchGoalCommand(JobSearchGoal("后端", "Python")), context)
+	application.execute(StartJobSearchCommand(), context)
+	deadline = time.monotonic() + 2
+	while time.monotonic() < deadline:
+		if application.query(CurrentStateQuery(), context).active_run.state == "completed":
+			break
+		time.sleep(0.01)
+	application.execute(InspectJobCommand("job-1"), context)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		prepare_status, _, prepare_body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/prepare-job-greeting",
+			headers=headers,
+			body={"request_id": "prepare-1", "reference": "job-1", "message": "您好"},
+		)
+		forged_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/write-intents/confirm",
+			headers=headers,
+			body={
+				"request_id": "confirm-forged",
+				"intent_id": "intent-api-1",
+				"message": "替换内容",
+			},
+		)
+		confirm_status, _, confirm_body = _request(
+			server,
+			"POST",
+			"/api/v1/write-intents/confirm",
+			headers=headers,
+			body={"request_id": "confirm-1", "intent_id": "intent-api-1"},
+		)
+		duplicate_status, _, duplicate_body = _request(
+			server,
+			"POST",
+			"/api/v1/write-intents/confirm",
+			headers=headers,
+			body={"request_id": "confirm-2", "intent_id": "intent-api-1"},
+		)
+	finally:
+		server.close()
+
+	assert prepare_status == 200
+	assert json.loads(prepare_body)["snapshot"]["pending_write_intent"]["payload_preview"] == "您好"
+	assert forged_status == 400
+	assert confirm_status == 200
+	assert json.loads(confirm_body)["snapshot"]["pending_write_intent"]["state"] == "succeeded"
+	assert duplicate_status == 400
+	assert json.loads(duplicate_body)["error"]["code"] == "WRITE_INTENT_CONSUMED"
+	assert boss.greeting_calls == [("job-1", "您好")]

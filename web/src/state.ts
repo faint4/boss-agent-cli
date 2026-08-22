@@ -52,6 +52,28 @@ export type JobSeekingState = {
   shortlist: JobSummary[];
 };
 
+export type WriteIntentState =
+  | "pending"
+  | "executing"
+  | "succeeded"
+  | "rejected"
+  | "expired"
+  | "cancelled"
+  | "uncertain";
+
+export type WriteIntent = {
+  intent_id: string;
+  workspace: "job-seeking" | "recruiting";
+  target_reference: string;
+  target_label: string;
+  action: string;
+  payload_preview: string;
+  warnings: string[];
+  expires_at: string;
+  state: WriteIntentState;
+  outcome_message: string | null;
+};
+
 export type ApplicationSnapshot = {
   schema_version: string;
   active_workspace: "job-seeking" | "recruiting";
@@ -60,7 +82,7 @@ export type ApplicationSnapshot = {
   selected_reference: string | null;
   local_decision: string | null;
   sensitive_content_present: boolean;
-  pending_write_intent: object | null;
+  pending_write_intent: WriteIntent | null;
   last_transition: string | null;
   error: DomainError | null;
   job_seeking: JobSeekingState | null;
@@ -69,6 +91,9 @@ export type ApplicationSnapshot = {
 export type SnapshotView = "ready" | "empty" | "error" | "recovery";
 
 export function deriveView(snapshot: ApplicationSnapshot): SnapshotView {
+  if (snapshot.pending_write_intent !== null) {
+    return "ready";
+  }
   if (snapshot.platform_session === "recovery" || snapshot.error?.recoverable) {
     return "recovery";
   }

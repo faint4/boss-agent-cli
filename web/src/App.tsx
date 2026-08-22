@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   cancelRun,
+  cancelWriteIntent,
   connectPlatformSession,
+  confirmWriteIntent,
   inspectJob,
   loadSnapshot,
   logoutPlatformSession,
+  prepareJobGreeting,
   setShortlisted,
   startJobSearch,
   switchWorkspace,
@@ -15,6 +18,7 @@ import {
   type ApplicationSnapshot,
   type JobSearchGoal,
   type SnapshotView,
+  type WriteIntent,
 } from "./state";
 
 type ScreenState = "loading" | SnapshotView;
@@ -29,7 +33,7 @@ function StatusChrome({ snapshot }: { snapshot: ApplicationSnapshot }) {
     stopping: "正在停止",
     recovery: "需要恢复",
   }[snapshot.platform_session];
-  return <header className="status-chrome"><div><p className="eyebrow">本机专属 · 只读搜索</p><h1>BOSS 本地工作台</h1></div><dl className="status-grid"><div><dt>当前空间</dt><dd>{workspace}</dd></div><div><dt>平台会话</dt><dd>{session}</dd></div><div><dt>搜索运行</dt><dd>{snapshot.active_run?.state ?? "暂无"}</dd></div></dl></header>;
+  return <header className="status-chrome"><div><p className="eyebrow">本机专属 · 显式确认写入</p><h1>BOSS 本地工作台</h1></div><dl className="status-grid"><div><dt>当前空间</dt><dd>{workspace}</dd></div><div><dt>平台会话</dt><dd>{session}</dd></div><div><dt>搜索运行</dt><dd>{snapshot.active_run?.state ?? "暂无"}</dd></div></dl></header>;
 }
 
 function Pipeline() {
@@ -55,7 +59,7 @@ export function WorkspaceControls({ snapshot, busy, commandError, onSwitch, onCo
   return <section className="workspace-controls" aria-labelledby="workspace-controls-title"><div><p className="eyebrow" id="workspace-controls-title">工作区与平台会话</p><div className="workspace-buttons"><button className={jobSeekingActive ? "workspace-active" : "secondary-button"} aria-pressed={jobSeekingActive} disabled={busy || jobSeekingActive} onClick={() => onSwitch("job-seeking")}>{jobSeekingActive ? "求职工作区（当前）" : "切换到求职工作区"}</button><button className={!jobSeekingActive ? "workspace-active" : "secondary-button"} aria-pressed={!jobSeekingActive} disabled={busy || !jobSeekingActive} onClick={() => onSwitch("recruiting")}>{!jobSeekingActive ? "招聘工作区（当前）" : "切换到招聘工作区"}</button></div></div><div className="session-control"><span>当前工作区的独立会话</span>{sessionControl}</div>{commandError ? <p className="command-error" role="alert">{commandError}</p> : null}</section>;
 }
 
-export function JobJourney({ snapshot, busy, onSaveGoal, onSearch, onCancel, onInspect, onShortlist }: {
+export function JobJourney({ snapshot, busy, onSaveGoal, onSearch, onCancel, onInspect, onShortlist, onPrepareGreeting }: {
   snapshot: ApplicationSnapshot;
   busy: boolean;
   onSaveGoal: (goal: JobSearchGoal) => void;
@@ -63,6 +67,7 @@ export function JobJourney({ snapshot, busy, onSaveGoal, onSearch, onCancel, onI
   onCancel: (runId: string) => void;
   onInspect: (reference: string) => void;
   onShortlist: (reference: string, shortlisted: boolean) => void;
+  onPrepareGreeting: (reference: string, message: string) => void;
 }) {
   const state = snapshot.job_seeking;
   if (snapshot.active_workspace !== "job-seeking" || !state) {
@@ -82,9 +87,42 @@ export function JobJourney({ snapshot, busy, onSaveGoal, onSearch, onCancel, onI
   return <div className="journey-grid">
     <section className="panel"><p className="eyebrow">1 · 求职目标</p><h2>定义这次搜索</h2><form className="goal-form" onSubmit={submitGoal}><label>目标<input name="objective" required defaultValue={state.goal?.objective ?? ""} placeholder="例如：寻找后端工程师岗位" /></label><label>关键词<input name="keyword" required defaultValue={state.goal?.keyword ?? ""} placeholder="Python" /></label><label>城市<input name="city" defaultValue={state.goal?.city ?? ""} placeholder="上海" /></label><label>薪资<input name="salary" defaultValue={state.goal?.salary ?? ""} placeholder="20-40K" /></label><label>经验<input name="experience" defaultValue={state.goal?.experience ?? ""} placeholder="3-5年" /></label><label>学历<input name="education" defaultValue={state.goal?.education ?? ""} placeholder="本科" /></label><div className="form-actions"><button disabled={busy}>保存目标</button><button type="button" disabled={busy || !state.goal || snapshot.platform_session !== "connected" || Boolean(running)} onClick={onSearch}>开始只读搜索</button>{running && snapshot.active_run ? <button type="button" className="danger-button" disabled={busy || snapshot.active_run.state === "cancelling"} onClick={() => onCancel(snapshot.active_run!.run_id)}>取消搜索</button> : null}</div></form>{snapshot.active_run ? <div className="run-progress" aria-live="polite"><strong>{snapshot.active_run.state === "recovery" ? "搜索已暂停" : `搜索 ${snapshot.active_run.state}`}</strong><progress max="100" value={snapshot.active_run.progress ?? 0} /><span>{snapshot.active_run.progress ?? 0}% · 已找到 {state.results.length} 个职位</span></div> : null}</section>
     <section className="panel"><p className="eyebrow">2 · 搜索结果</p><h2>{state.results.length ? `${state.results.length} 个职位` : snapshot.active_run?.state === "completed" ? "没有匹配结果" : "等待搜索"}</h2><div className="job-list">{state.results.map((job) => <article className="job-card" key={job.reference}><div><h3>{job.title}</h3><p>{job.company} · {job.location || "地点未提供"}</p><small>{[job.salary, job.experience, job.education].filter(Boolean).join(" · ")}</small></div><div className="card-actions"><button className="secondary-button" disabled={busy} onClick={() => onInspect(job.reference)}>查看来源事实</button><button disabled={busy} onClick={() => onShortlist(job.reference, !shortlisted.has(job.reference))}>{shortlisted.has(job.reference) ? "移出收藏" : "加入收藏"}</button></div></article>)}</div></section>
-    {state.selected_job ? <section className="panel detail-panel"><p className="eyebrow">3 · 职位详情</p><h2>{state.selected_job.source.job.title}</h2><dl className="facts"><div><dt>公司</dt><dd>{state.selected_job.source.job.company}</dd></div><div><dt>地点</dt><dd>{state.selected_job.source.job.location || "未提供"}</dd></div><div><dt>薪资</dt><dd>{state.selected_job.source.job.salary || "未提供"}</dd></div><div><dt>招聘者</dt><dd>{state.selected_job.source.recruiter || "未提供"}</dd></div></dl><h3>平台来源原文</h3><p className="source-copy">{state.selected_job.source.description || "平台未提供职位描述。"}</p><h3>本地匹配理由</h3>{state.selected_job.match_reasons.length ? <ul>{state.selected_job.match_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p>没有足够的来源事实可生成匹配理由。</p>}</section> : null}
+    {state.selected_job ? <section className="panel detail-panel"><p className="eyebrow">3 · 职位详情</p><h2>{state.selected_job.source.job.title}</h2><dl className="facts"><div><dt>公司</dt><dd>{state.selected_job.source.job.company}</dd></div><div><dt>地点</dt><dd>{state.selected_job.source.job.location || "未提供"}</dd></div><div><dt>薪资</dt><dd>{state.selected_job.source.job.salary || "未提供"}</dd></div><div><dt>招聘者</dt><dd>{state.selected_job.source.recruiter || "未提供"}</dd></div></dl><h3>平台来源原文</h3><p className="source-copy">{state.selected_job.source.description || "平台未提供职位描述。"}</p><h3>本地匹配理由</h3>{state.selected_job.match_reasons.length ? <ul>{state.selected_job.match_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : <p>没有足够的来源事实可生成匹配理由。</p>}<form className="greeting-form" key={state.selected_job.source.job.reference} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); onPrepareGreeting(state.selected_job!.source.job.reference, String(form.get("message") ?? "")); }}><label htmlFor="greeting-message">招呼内容</label><textarea id="greeting-message" name="message" required maxLength={1000} defaultValue="您好，我对这个岗位很感兴趣，希望进一步沟通。" /><p>这一步只在本机准备确认，不会向 BOSS 发送。</p><button disabled={busy || ["pending", "executing"].includes(snapshot.pending_write_intent?.state ?? "")}>准备发送招呼</button></form></section> : null}
     <section className="panel shortlist-panel"><p className="eyebrow">4 · 本地收藏</p><h2>{state.shortlist.length ? `${state.shortlist.length} 个已收藏职位` : "收藏为空"}</h2><p>收藏只保存在当前求职工作区，重启后仍会保留。</p>{state.shortlist.map((job) => <article className="shortlist-row" key={job.reference}><span><strong>{job.title}</strong><small>{job.company}</small></span><button className="secondary-button" disabled={busy} onClick={() => onShortlist(job.reference, false)}>移出</button></article>)}</section>
   </div>;
+}
+
+export function WriteConfirmationGate({ intent, busy, onConfirm, onCancel }: {
+  intent: WriteIntent;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const stateLabel = {
+    pending: "等待你的明确确认",
+    executing: "正在执行一次发送",
+    succeeded: "发送成功",
+    rejected: "平台已拒绝",
+    expired: "确认已过期",
+    cancelled: "确认已取消",
+    uncertain: "发送结果不确定",
+  }[intent.state];
+  return <section className={`confirmation-gate confirmation-${intent.state}`} aria-labelledby="confirmation-title" aria-live="polite">
+    <p className="eyebrow">5 · Platform Write</p>
+    <h2 id="confirmation-title">发送前确认</h2>
+    <p className="intent-state"><strong>{stateLabel}</strong></p>
+    <dl className="confirmation-facts">
+      <div><dt>目标</dt><dd>{intent.target_label}</dd></div>
+      <div><dt>动作</dt><dd>{intent.action}</dd></div>
+      <div><dt>有效期至</dt><dd>{new Date(intent.expires_at).toLocaleString("zh-CN")}</dd></div>
+    </dl>
+    <h3>将发送的内容</h3>
+    <p className="payload-preview">{intent.payload_preview}</p>
+    {intent.warnings.length ? <ul className="intent-warnings">{intent.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+    {intent.outcome_message ? <p className="outcome-message" role={intent.state === "uncertain" ? "alert" : undefined}>{intent.outcome_message}</p> : null}
+    {intent.state === "pending" ? <div className="confirmation-actions"><button disabled={busy} onClick={onConfirm}>确认并发送一次</button><button className="secondary-button" disabled={busy} onClick={onCancel}>取消，不发送</button></div> : null}
+    {intent.state === "executing" ? <p>确认已经消耗。请等待本次结果，不要刷新后重复操作。</p> : null}
+  </section>;
 }
 
 export function SnapshotPanel({ screen, snapshot, clientError, onRefresh }: { screen: SnapshotView; snapshot: ApplicationSnapshot; clientError: string | null; onRefresh: () => void; }) {
@@ -103,8 +141,8 @@ export default function App() {
   const refresh = useCallback(async (showLoading = false) => { if (showLoading) setScreen("loading"); setClientError(null); try { const next = await loadSnapshot(); setSnapshot(next); setScreen(deriveView(next)); } catch (error) { setClientError(error instanceof Error ? error.message : "本地工作台发生未知错误。"); setScreen("error"); } }, []);
   useEffect(() => { void refresh(true); }, [refresh]);
   useEffect(() => { if (!snapshot || (!['connecting', 'stopping'].includes(snapshot.platform_session) && !['running', 'cancelling'].includes(snapshot.active_run?.state ?? ''))) return undefined; const timer = window.setInterval(() => void refresh(), 500); return () => window.clearInterval(timer); }, [refresh, snapshot]);
-  const perform = useCallback(async (action: () => Promise<ApplicationSnapshot>) => { setCommandPending(true); setCommandError(null); try { const next = await action(); setSnapshot(next); setScreen(deriveView(next)); } catch (error) { setCommandError(error instanceof Error ? error.message : "操作未完成，请重试。"); } finally { setCommandPending(false); } }, []);
+  const perform = useCallback(async (action: () => Promise<ApplicationSnapshot>) => { setCommandPending(true); setCommandError(null); try { const next = await action(); setSnapshot(next); setScreen(deriveView(next)); } catch (error) { setCommandError(error instanceof Error ? error.message : "操作未完成，请重试。"); await refresh(); } finally { setCommandPending(false); } }, [refresh]);
   if (screen === "loading") return <main className="center-card" aria-live="polite"><div className="spinner" /><h1>正在安全启动本地工作台</h1><p>正在建立一次性本机会话并读取服务端状态。</p></main>;
   if (!snapshot) return <main className="center-card error-card"><p className="eyebrow">启动失败</p><h1>无法进入本地工作台</h1><p>{clientError}</p><button onClick={() => void refresh()}>重试</button></main>;
-  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} />{screen !== "error" && screen !== "recovery" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} /> : null}<footer>仅监听 127.0.0.1 · 求职目标与收藏保存在本机独立工作区</footer></main>;
+  return <main className="app-shell"><StatusChrome snapshot={snapshot} /><WorkspaceControls snapshot={snapshot} busy={commandPending} commandError={commandError} onSwitch={(workspace) => void perform(() => switchWorkspace(workspace))} onConnect={() => void perform(connectPlatformSession)} onLogout={() => void perform(logoutPlatformSession)} /><Pipeline /><SnapshotPanel screen={screen} snapshot={snapshot} clientError={clientError} onRefresh={() => void refresh()} />{snapshot.pending_write_intent ? <WriteConfirmationGate intent={snapshot.pending_write_intent} busy={commandPending} onConfirm={() => void perform(() => confirmWriteIntent(snapshot.pending_write_intent!.intent_id))} onCancel={() => void perform(() => cancelWriteIntent(snapshot.pending_write_intent!.intent_id))} /> : null}{screen !== "error" && screen !== "recovery" ? <JobJourney snapshot={snapshot} busy={commandPending} onSaveGoal={(goal) => void perform(() => updateJobSearchGoal(goal))} onSearch={() => void perform(startJobSearch)} onCancel={(runId) => void perform(() => cancelRun(runId))} onInspect={(reference) => void perform(() => inspectJob(reference))} onShortlist={(reference, value) => void perform(() => setShortlisted(reference, value))} onPrepareGreeting={(reference, message) => void perform(() => prepareJobGreeting(reference, message))} /> : null}<footer>仅监听 127.0.0.1 · 每次平台写入都需要单项确认 · Browser Bridge 不在本流程内</footer></main>;
 }

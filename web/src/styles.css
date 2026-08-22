@@ -47,8 +47,8 @@ footer { padding: 18px 8px; color: #68786e; font-size: 0.78rem; text-align: cent
 .goal-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .goal-form label { display: grid; gap: 6px; color: #4c6255; font-size: 0.8rem; font-weight: 750; }
 .goal-form label:first-child { grid-column: 1 / -1; }
-input { width: 100%; padding: 12px 14px; border: 1px solid #cbd8cf; border-radius: 12px; color: #17211b; background: #fbfdfb; font: inherit; }
-input:focus { outline: 3px solid rgb(87 232 154 / 30%); border-color: #32a86b; }
+input, textarea { width: 100%; padding: 12px 14px; border: 1px solid #cbd8cf; border-radius: 12px; color: #17211b; background: #fbfdfb; font: inherit; }
+input:focus, textarea:focus { outline: 3px solid rgb(87 232 154 / 30%); border-color: #32a86b; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; margin-top: 4px; }
 .danger-button { color: #7a231b; background: #ffd9d4; }
 .run-progress { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin-top: 18px; padding: 14px; background: #edf9f1; border-radius: 14px; }
@@ -65,6 +65,26 @@ input:focus { outline: 3px solid rgb(87 232 154 / 30%); border-color: #32a86b; }
 .facts dt { color: #6b786f; font-size: 0.72rem; }
 .facts dd { margin: 4px 0 0; font-weight: 700; }
 .source-copy { white-space: pre-wrap; line-height: 1.7; }
+.greeting-form { display: grid; gap: 10px; margin-top: 24px; padding: 20px; background: #f3f7f4; border-radius: 16px; }
+.greeting-form label { color: #315341; font-weight: 800; }
+.greeting-form textarea { min-height: 110px; resize: vertical; }
+.greeting-form p { margin: 0; color: #68786e; font-size: 0.82rem; }
+.greeting-form button { justify-self: start; }
+.confirmation-gate { margin: 18px 0; padding: 28px; background: #fffdf7; border: 2px solid #d9b74d; border-radius: 24px; box-shadow: 0 16px 45px rgb(80 58 8 / 10%); }
+.confirmation-gate .eyebrow { color: #8a6710; }
+.confirmation-gate h2 { margin-bottom: 8px; }
+.intent-state { color: #6e5518; }
+.confirmation-facts { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin: 18px 0; }
+.confirmation-facts div { padding: 13px; background: #fff8e4; border-radius: 12px; }
+.confirmation-facts dt { color: #786a43; font-size: 0.72rem; }
+.confirmation-facts dd { margin: 5px 0 0; font-weight: 750; }
+.payload-preview { padding: 18px; white-space: pre-wrap; background: #f7f4ea; border-radius: 14px; }
+.intent-warnings { color: #755d1c; }
+.outcome-message { padding: 14px; font-weight: 700; background: #f3f4f1; border-radius: 12px; }
+.confirmation-uncertain { border-color: #d87f36; background: #fff8f1; }
+.confirmation-rejected, .confirmation-expired, .confirmation-cancelled { border-color: #b9c0ba; background: #fafbfa; }
+.confirmation-succeeded { border-color: #45ad72; background: #f4fff8; }
+.confirmation-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 .shortlist-panel { grid-column: 1 / -1; }
 .shortlist-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 11px 0; border-top: 1px solid #e2e9e4; }
 .shortlist-row span { display: grid; gap: 3px; }
@@ -83,6 +103,7 @@ input:focus { outline: 3px solid rgb(87 232 154 / 30%); border-color: #32a86b; }
   .goal-form { grid-template-columns: 1fr; }
   .goal-form label:first-child, .form-actions { grid-column: auto; }
   .facts { grid-template-columns: repeat(2, 1fr); }
+  .confirmation-facts { grid-template-columns: 1fr; }
   .job-card { flex-direction: column; }
   .card-actions { align-items: flex-start; }
 }
