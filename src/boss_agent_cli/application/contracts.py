@@ -111,6 +111,12 @@ class LogoutPlatformSessionCommand:
 
 
 @dataclass(frozen=True)
+class ClearWorkspaceCommand:
+	workspace: WorkspaceKind
+	confirmation: str
+
+
+@dataclass(frozen=True)
 class JobSearchGoal:
 	objective: str
 	keyword: str
@@ -213,6 +219,7 @@ ApplicationCommand = (
 	SwitchWorkspaceCommand
 	| ConnectPlatformSessionCommand
 	| LogoutPlatformSessionCommand
+	| ClearWorkspaceCommand
 	| UpdateJobSearchGoalCommand
 	| StartJobSearchCommand
 	| RequestAIAssistanceCommand
@@ -347,6 +354,27 @@ class AIAssistanceState:
 
 
 @dataclass(frozen=True)
+class WorkspacePrivacySummary:
+	workspace: WorkspaceKind
+	approximate_bytes: int
+	retained_categories: tuple[str, ...]
+	default_export_includes: tuple[str, ...]
+	default_export_excludes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WorkspaceExport:
+	schema_version: str
+	workspace: WorkspaceKind
+	generated_at: datetime
+	job_search_goal: JobSearchGoal | None = None
+	job_shortlist: tuple[JobSummary, ...] = ()
+	selected_opening: RecruitingOpening | None = None
+	recoverable_runs: tuple[RunSummary, ...] = ()
+	excluded_categories: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RunResult:
 	category: str
 	item_count: int = 0
@@ -410,6 +438,7 @@ class ApplicationStateSnapshot:
 	job_seeking: JobSeekingState | None = None
 	recruiting: RecruitingState | None = None
 	ai_assistance: AIAssistanceState | None = None
+	workspace_privacy: tuple[WorkspacePrivacySummary, ...] = ()
 
 
 @dataclass(frozen=True)

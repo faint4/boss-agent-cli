@@ -135,6 +135,14 @@ export type AIAssistanceState = {
   suggestion: AISuggestion | null;
 };
 
+export type WorkspacePrivacySummary = {
+  workspace: "job-seeking" | "recruiting";
+  approximate_bytes: number;
+  retained_categories: string[];
+  default_export_includes: string[];
+  default_export_excludes: string[];
+};
+
 export type ApplicationSnapshot = {
   schema_version: string;
   active_workspace: "job-seeking" | "recruiting";
@@ -149,6 +157,7 @@ export type ApplicationSnapshot = {
   job_seeking: JobSeekingState | null;
   recruiting: RecruitingState | null;
   ai_assistance?: AIAssistanceState | null;
+  workspace_privacy: WorkspacePrivacySummary[];
 };
 
 export type SnapshotView = "ready" | "empty" | "error" | "recovery";

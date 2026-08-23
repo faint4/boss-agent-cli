@@ -18,6 +18,7 @@ from boss_agent_cli.application.contracts import (
 	ApplicationCommand,
 	CancelRunCommand,
 	CancelWriteIntentCommand,
+	ClearWorkspaceCommand,
 	ConnectPlatformSessionCommand,
 	ConfirmWriteIntentCommand,
 	DiscardAISuggestionCommand,
@@ -306,6 +307,13 @@ REQUEST_ID = FieldDefinition(
 	minimum_length=1,
 	maximum_length=128,
 )
+CLEAR_CONFIRMATION = FieldDefinition(
+	"confirmation",
+	"string",
+	"精确的 Workspace 清除确认短语",
+	minimum_length=1,
+	maximum_length=64,
+)
 AI_KIND = FieldDefinition(
 	"kind",
 	"string",
@@ -369,6 +377,14 @@ WEB_COMMANDS = {
 		),
 		WebCommandDefinition(
 			"/api/v1/commands/logout-platform-session", (), lambda payload: LogoutPlatformSessionCommand()
+		),
+		WebCommandDefinition(
+			"/api/v1/commands/clear-workspace",
+			(WORKSPACE, CLEAR_CONFIRMATION),
+			lambda payload: ClearWorkspaceCommand(
+				WorkspaceKind(str(payload["workspace"])),
+				str(payload["confirmation"]),
+			),
 		),
 		WebCommandDefinition(
 			"/api/v1/commands/update-job-search-goal",

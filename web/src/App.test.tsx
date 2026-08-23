@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import App, { AIAssistancePanel, JobJourney, RecruitingJourney, RunRecoveryPanel, SnapshotPanel, WorkspaceControls, WriteConfirmationGate } from "./App";
+import App, { AIAssistancePanel, JobJourney, RecruitingJourney, RunRecoveryPanel, SnapshotPanel, WorkspaceControls, WorkspacePrivacyPanel, WriteConfirmationGate } from "./App";
 import type { ApplicationSnapshot, SnapshotView } from "./state";
 
 const baseSnapshot: ApplicationSnapshot = {
@@ -21,6 +21,7 @@ const baseSnapshot: ApplicationSnapshot = {
     shortlist: [],
   },
   recruiting: null,
+  workspace_privacy: [],
 };
 
 function renderPanel(screen: SnapshotView, snapshot: ApplicationSnapshot): string {
@@ -116,6 +117,42 @@ describe("local Web shell states", () => {
     expect(markup).toContain("求职工作区（当前）");
     expect(markup).toContain("切换到招聘工作区");
     expect(markup).toContain("连接 BOSS");
+  });
+
+  it("explains workspace storage, export exclusions, and exact clear confirmation", () => {
+    const markup = renderToStaticMarkup(
+      <WorkspacePrivacyPanel
+        snapshot={{
+          ...baseSnapshot,
+          workspace_privacy: [
+            {
+              workspace: "job-seeking",
+              approximate_bytes: 2048,
+              retained_categories: ["search-goal-and-filters", "job-shortlist", "protected-platform-session"],
+              default_export_includes: ["search-goal-and-filters", "job-shortlist"],
+              default_export_excludes: ["credentials-cookies-and-tokens", "resumes-contact-details-and-chats"],
+            },
+            {
+              workspace: "recruiting",
+              approximate_bytes: 1024,
+              retained_categories: ["selected-opening", "protected-platform-session"],
+              default_export_includes: ["selected-opening"],
+              default_export_excludes: ["credentials-cookies-and-tokens", "resumes-contact-details-and-chats"],
+            },
+          ],
+        }}
+        busy={false}
+        onExport={() => undefined}
+        onClear={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain("数据、导出与清除");
+    expect(markup).toContain("求职工作区 · 约 2.0 KB");
+    expect(markup).toContain("招聘工作区 · 约 1.0 KB");
+    expect(markup).toContain("默认导出不会包含凭据、Cookie、Token、简历、联系方式或聊天内容");
+    expect(markup).toContain("clear:job-seeking");
+    expect(markup).toContain("disabled");
   });
 
   it("shows stopping and recovery as visible session controls", () => {

@@ -11,6 +11,7 @@ from boss_agent_cli.application.contracts import (
 	AISuggestion,
 	CancelRunCommand,
 	CancelWriteIntentCommand,
+	ClearWorkspaceCommand,
 	CommandResult,
 	ConfirmWriteIntentCommand,
 	ConnectPlatformSessionCommand,
@@ -53,6 +54,8 @@ from boss_agent_cli.application.contracts import (
 	WriteIntentSummary,
 	WriteIntentState,
 	WorkspaceKind,
+	WorkspaceExport,
+	WorkspacePrivacySummary,
 )
 from boss_agent_cli.application.core_journey_contract import (
 	CORE_JOURNEY_CONTRACTS,
@@ -76,6 +79,7 @@ __all__ = [
 	"CORE_JOURNEY_CONTRACTS",
 	"CancelRunCommand",
 	"CancelWriteIntentCommand",
+	"ClearWorkspaceCommand",
 	"CommandResult",
 	"ConfirmWriteIntentCommand",
 	"ConnectPlatformSessionCommand",
@@ -121,4 +125,6 @@ __all__ = [
 	"WriteIntentSummary",
 	"WriteIntentState",
 	"WorkspaceKind",
+	"WorkspaceExport",
+	"WorkspacePrivacySummary",
 ]

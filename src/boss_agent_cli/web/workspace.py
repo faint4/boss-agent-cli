@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import sys
 import threading
@@ -154,6 +155,46 @@ class WorkspaceRegistry:
 	def sensitive_content_present(self, workspace: WorkspaceKind) -> bool:
 		with self._lock:
 			return self._runtime.get(workspace, _RuntimeState()).sensitive_content_present
+
+	def approximate_usage(self, workspace: WorkspaceKind) -> int:
+		root = self.paths(workspace).root
+		if not root.exists():
+			return 0
+		total = 0
+		for path in root.rglob("*"):
+			if path.is_file():
+				try:
+					total += path.stat().st_size
+				except OSError:
+					continue
+		return total
+
+	def clear_workspace(self, workspace: WorkspaceKind) -> None:
+		paths = self.paths(workspace)
+		root = paths.root.resolve()
+		expected_parent = self._workspaces_root.resolve()
+		if root.parent != expected_parent or root.name != workspace.value:
+			raise OSError("Workspace clear target is invalid")
+		with self._lock:
+			self.ensure_workspace(workspace)
+			connection = sqlite3.connect(paths.database)
+			try:
+				connection.execute("DELETE FROM run_events")
+				connection.execute("DELETE FROM runs")
+				connection.execute("DELETE FROM local_state")
+				connection.commit()
+			finally:
+				connection.close()
+			for child in root.iterdir():
+				if child.resolve() == paths.database.resolve():
+					continue
+				if child.is_dir():
+					shutil.rmtree(child)
+				else:
+					child.unlink()
+			self._runtime.pop(workspace, None)
+			self.ensure_workspace(workspace)
+			self._last_transition = "workspace-cleared"
 
 	def write_local_state(self, workspace: WorkspaceKind, key: str, value: str) -> None:
 		paths = self.ensure_workspace(workspace)
@@ -319,6 +360,12 @@ class WorkspaceRegistry:
 		if row is None:
 			return None
 		return self._run_from_payload(json.loads(str(row[0])))
+
+	def list_runs(self, workspace: WorkspaceKind) -> tuple[RunSummary, ...]:
+		paths = self.ensure_workspace(workspace)
+		with sqlite3.connect(paths.database) as connection:
+			rows = connection.execute("SELECT snapshot FROM runs ORDER BY updated_at, run_id").fetchall()
+		return tuple(self._run_from_payload(json.loads(str(row[0]))) for row in rows)
 
 	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None:
 		paths = self.ensure_workspace(workspace)
