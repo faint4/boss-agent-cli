@@ -18,7 +18,7 @@ from boss_agent_cli.web.ai_assistance import ConfiguredAIAssistant
 def _official_boss_login(workspace: WorkspaceKind) -> dict[str, Any]:
 	"""Open a dedicated official BOSS login window without inspecting daily-browser cookies."""
 
-	return login_via_browser(timeout=120, platform="zhipin")
+	return login_via_browser(timeout=300, platform="zhipin")
 
 
 def create_application(

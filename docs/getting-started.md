@@ -21,12 +21,19 @@ uv run patchright install chromium
 源码中的 Developer Preview Web 外壳可用一条命令启动：
 
 ```bash
+cd web
+pnpm install --frozen-lockfile
+pnpm run build
+cd ..
+uv run python scripts/developer_preview_gate.py source --repo-root .
 uv run boss-web
 ```
 
 该命令由 Python 在随机的 `127.0.0.1` 端口托管已构建的 React UI，并在服务就绪后打开浏览器。启动凭据仅用于本次进程且只保存在内存中。求职与招聘工作区使用完全分离的数据库、缓存、运行目录和平台会话；Windows 上的平台会话由当前用户的 DPAPI 加密保存。连接操作只会打开 BOSS 官方登录窗口，不读取日常浏览器凭据；退出只删除当前工作区的平台凭据并保留本地工作流数据。Browser Bridge 仍不属于这条启动路径，也不会自动执行 BOSS 写入。
 
 修改 `web/` 下的前端源码后，使用 `cd web && pnpm install --frozen-lockfile && pnpm run build` 更新随 Python 包发布的生产资源。
+
+连接真实 BOSS 前还需运行 `uv run patchright install chromium`。真实账号只能使用上述 Python 同源托管的生产构建，不能使用 Vite 开发或预览服务器。完整自动化矩阵、人工验收边界和脱敏证据格式见 [Developer Preview 验收](developer-preview.md)。
 
 ## 2. 本地自检
 

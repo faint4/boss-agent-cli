@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from boss_agent_cli.api import endpoints
 from boss_agent_cli.application import BossAdapterFailure, ErrorCode, JobSearchGoal, PlatformSessionState, WorkspaceKind
-from boss_agent_cli.web.boss_read import BossReadAdapter
+from boss_agent_cli.web.boss_read import BossReadAdapter, _http_read
 
 
 class _Sessions:
@@ -14,7 +15,42 @@ class _Sessions:
 		return PlatformSessionState.CONNECTED
 
 	def active_credential(self, workspace: WorkspaceKind) -> dict[str, Any] | None:
-		return {"cookies": {"wt2": "secret"}, "user_agent": "test"}
+		return {"cookies": {"wt2": "secret"}, "stoken": "dynamic-token", "user_agent": "test"}
+
+
+def test_http_read_adds_dynamic_token_without_mutating_caller_params() -> None:
+	response = MagicMock()
+	response.status_code = 200
+	response.json.return_value = {"code": 0, "zpData": {"jobList": []}}
+	response.raise_for_status.return_value = None
+	params = {"query": "Python", "page": 1}
+
+	with patch("boss_agent_cli.web.boss_read.httpx.get", return_value=response) as get:
+		_http_read(
+			endpoints.SEARCH_URL,
+			params,
+			{"cookies": {"wt2": "secret"}, "stoken": "dynamic-token", "user_agent": "test"},
+		)
+
+	assert params == {"query": "Python", "page": 1}
+	assert get.call_args.kwargs["params"] == {
+		"query": "Python",
+		"page": 1,
+		"__zp_stoken__": "dynamic-token",
+	}
+
+
+def test_http_read_rejects_incomplete_credentials_without_remote_request() -> None:
+	with patch("boss_agent_cli.web.boss_read.httpx.get") as get:
+		with pytest.raises(BossAdapterFailure) as raised:
+			_http_read(
+				endpoints.SEARCH_URL,
+				{"query": "Python", "page": 1},
+				{"cookies": {"wt2": "secret"}, "stoken": "", "user_agent": "test"},
+			)
+
+	assert raised.value.code is ErrorCode.AUTHENTICATION_EXPIRED
+	get.assert_not_called()
 
 
 def test_boss_read_adapter_maps_one_bounded_search_without_exposing_security_id() -> None:
@@ -79,6 +115,53 @@ def test_boss_adapter_sends_one_greeting_with_server_owned_security_id() -> None
 	assert write_calls == [
 		(endpoints.GREET_URL, {"securityId": "secret-1", "jobId": "job-1", "greeting": "您好"})
 	]
+
+
+def test_boss_adapter_reads_detail_with_server_owned_security_id() -> None:
+	calls: list[tuple[str, dict[str, Any]]] = []
+
+	def transport(url: str, params: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+		calls.append((url, params))
+		if url == endpoints.SEARCH_URL:
+			return {
+				"code": 0,
+				"zpData": {
+					"jobList": [{"encryptJobId": "job-1", "jobName": "工程师", "securityId": "secret-1"}]
+				},
+			}
+		return {
+			"code": 0,
+			"zpData": {
+				"jobInfo": {"encryptJobId": "job-1", "jobName": "工程师"},
+				"bossInfo": {},
+				"brandComInfo": {},
+			},
+		}
+
+	adapter = BossReadAdapter(_Sessions(), transport=transport)
+	tuple(adapter.search_jobs(JobSearchGoal("后端", "Python"), cancel_requested=lambda: False))
+
+	detail = adapter.job_detail("job-1")
+
+	assert detail.job.reference == "job-1"
+	assert calls[1] == (
+		endpoints.DETAIL_URL,
+		{"encryptJobId": "job-1", "securityId": "secret-1"},
+	)
+
+
+def test_boss_adapter_will_not_read_detail_without_server_owned_security_id() -> None:
+	reads: list[object] = []
+	adapter = BossReadAdapter(
+		_Sessions(),
+		transport=lambda *args: reads.append(args) or {"code": 0, "zpData": {}},
+	)
+
+	with pytest.raises(BossAdapterFailure) as raised:
+		adapter.job_detail("forged-job")
+
+	assert raised.value.code is ErrorCode.UNSUPPORTED_CAPABILITY
+	assert reads == []
 
 
 def test_boss_adapter_will_not_write_without_server_owned_security_id() -> None:

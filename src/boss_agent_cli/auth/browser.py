@@ -3,7 +3,7 @@ import os
 import sys
 import time
 from typing import Any, cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from patchright.sync_api import sync_playwright
 
@@ -68,6 +68,25 @@ def _is_zhilian_url(url: str) -> bool:
 		return False
 	host = host.rstrip(".").lower()
 	return host == _ZHILIAN_HOST or host.endswith(f".{_ZHILIAN_HOST}")
+
+
+def _stoken_from_request_url(url: str) -> str:
+	"""Return a BOSS runtime token observed on a genuine zhipin request."""
+	parsed = urlparse(url)
+	host = (parsed.hostname or "").rstrip(".").lower()
+	if host != "zhipin.com" and not host.endswith(".zhipin.com"):
+		return ""
+	values = parse_qs(parsed.query).get("__zp_stoken__", [])
+	return values[0] if values else ""
+
+
+def _is_authenticated_zhipin_landing_url(url: str) -> bool:
+	"""Recognize a top-level same-site page reached after leaving the login flow."""
+	parsed = urlparse(url)
+	host = (parsed.hostname or "").rstrip(".").lower()
+	if host != "zhipin.com" and not host.endswith(".zhipin.com"):
+		return False
+	return not parsed.path.rstrip("/").startswith("/web/user")
 
 
 def _find_zhilian_recruiter_page(pages: list[Any]) -> Any | None:
@@ -139,6 +158,16 @@ def login_via_cdp(*, cdp_url: str | None = None, timeout: int = 120, platform: s
 	created_page = page is None
 	if page is None:
 		page = ctx.new_page()
+	runtime_stoken = ""
+
+	def _remember_runtime_stoken(request: Any) -> None:
+		nonlocal runtime_stoken
+		if runtime_stoken:
+			return
+		runtime_stoken = _stoken_from_request_url(str(getattr(request, "url", "")))
+
+	if platform == "zhipin":
+		page.on("request", _remember_runtime_stoken)
 
 	try:
 		if created_page or platform != "zhilian":
@@ -150,6 +179,7 @@ def login_via_cdp(*, cdp_url: str | None = None, timeout: int = 120, platform: s
 				)
 			except Exception:
 				pass
+		ua = page.evaluate("navigator.userAgent")
 
 		print(f"[boss] 请在 Chrome 中扫码登录，等待中...（超时 {timeout}s）", file=sys.stderr)
 
@@ -171,10 +201,10 @@ def login_via_cdp(*, cdp_url: str | None = None, timeout: int = 120, platform: s
 			except Exception:
 				pass
 		all_cookies = {c["name"]: c["value"] for c in ctx.cookies() if cookie_domain in c.get("domain", "")}
-		ua = page.evaluate("navigator.userAgent")
 		x_zp_client_id = _zhilian_client_id_from(all_cookies, page) if platform == "zhilian" else ""
+		stoken = str(all_cookies.get("__zp_stoken__") or runtime_stoken) if platform == "zhipin" else ""
 
-		result: dict[str, Any] = {"cookies": all_cookies, "stoken": "", "user_agent": ua}
+		result: dict[str, Any] = {"cookies": all_cookies, "stoken": stoken, "user_agent": ua}
 		if x_zp_client_id:
 			result["x_zp_client_id"] = x_zp_client_id
 		return result
@@ -204,8 +234,21 @@ def login_via_browser(*, timeout: int = 120, platform: str = "zhipin") -> dict[s
 			timezone_id="Asia/Shanghai",
 		)
 		page = context.new_page()
+		runtime_stoken = ""
+
+		def _remember_runtime_stoken(request: Any) -> None:
+			nonlocal runtime_stoken
+			if runtime_stoken:
+				return
+			runtime_stoken = _stoken_from_request_url(str(getattr(request, "url", "")))
+
+		if platform == "zhipin":
+			# Observe the token already attached by BOSS' own runtime instead of
+			# evaluating a page while its login redirect may still be navigating.
+			page.on("request", _remember_runtime_stoken)
 
 		page.goto(login_page_url, wait_until="domcontentloaded")
+		user_agent = page.evaluate("navigator.userAgent")
 		print("已打开 BOSS 直聘登录页。", file=sys.stderr)
 		print(f"请扫码或手机号登录（超时 {timeout} 秒）...", file=sys.stderr)
 
@@ -232,6 +275,9 @@ def login_via_browser(*, timeout: int = 120, platform: str = "zhipin") -> dict[s
 				if any(c["name"] == success_cookie and cookie_domain in c.get("domain", "") for c in cookies_list):
 					login_detected = True
 					break
+				if platform == "zhipin" and _is_authenticated_zhipin_landing_url(str(page.url)):
+					login_detected = True
+					break
 			except Exception:
 				pass
 			time.sleep(1)
@@ -248,11 +294,15 @@ def login_via_browser(*, timeout: int = 120, platform: str = "zhipin") -> dict[s
 
 		cookies_list = context.cookies()
 		cookies = {c["name"]: c["value"] for c in cookies_list if cookie_domain in c.get("domain", "")}
-		user_agent = page.evaluate("navigator.userAgent")
-		stoken = _extract_stoken(page) if platform == "zhipin" else ""
+		# Prefer a cookie when present, then the token observed on a same-site
+		# request. Neither path evaluates the post-login page, so credential
+		# extraction remains bounded even when the login redirect is still active.
+		stoken = str(cookies.get("__zp_stoken__") or runtime_stoken) if platform == "zhipin" else ""
 		x_zp_client_id = _extract_zhilian_client_id(page) if platform == "zhilian" else ""
 
 		browser.close()
+		if platform == "zhipin" and not stoken:
+			raise RuntimeError("BOSS 登录成功，但未能提取请求所需的动态令牌")
 
 	result: dict[str, Any] = {
 		"cookies": cookies,

@@ -1,0 +1,32 @@
+{
+	"schema_version": "1",
+	"product_version": "1.18.0",
+	"commit": "0000000000000000000000000000000000000000",
+	"windows_version": "Windows 11 24H2",
+	"browser": "Chrome 140",
+	"source_build_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+	"checked_at": "2026-08-23T02:00:00Z",
+	"workspaces": {
+		"job-seeking": {
+			"read_journey": "pass",
+			"confirmed_write": "pass",
+			"write_category": "greeting",
+			"result_category": "succeeded"
+		},
+		"recruiting": {
+			"read_journey": "pass",
+			"confirmed_write": "pass",
+			"write_category": "reply",
+			"result_category": "succeeded"
+		}
+	},
+	"recovery_checks": {
+		"cancellation": "pass",
+		"restart": "pass",
+		"authentication_expiry": "pass",
+		"rate_limiting": "pass",
+		"risk_control": "pass",
+		"uncertain_outcome": "pass"
+	},
+	"privacy_canaries": "pass"
+}
