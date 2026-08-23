@@ -13,4 +13,5 @@
 
 # Vite writes deterministic LF output on every platform. Keep the committed
 # production bundle byte-identical after a Windows checkout and rebuild.
+web/index.html text eol=lf
 src/boss_agent_cli/web/static/** text eol=lf

@@ -73,9 +73,9 @@ def test_source_gate_accepts_the_committed_production_checkout() -> None:
 		"windows-clean-checkout-ci",
 	}
 	assert all(check["status"] == "pass" for check in payload["checks"])
-	assert "src/boss_agent_cli/web/static/** text eol=lf" in (REPO_ROOT / ".gitattributes").read_text(
-		encoding="utf-8"
-	)
+	attributes = (REPO_ROOT / ".gitattributes").read_text(encoding="utf-8")
+	assert "web/index.html text eol=lf" in attributes
+	assert "src/boss_agent_cli/web/static/** text eol=lf" in attributes
 
 
 def test_manual_evidence_validator_accepts_only_redacted_gate_results(tmp_path: Path) -> None:
