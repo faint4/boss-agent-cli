@@ -74,6 +74,10 @@ def _cdp_recruiting_reply(friend_id: int, message: str, credential: dict[str, An
 
 
 def _http_read(url: str, params: dict[str, Any], credential: dict[str, Any]) -> dict[str, Any]:
+	stoken = str(credential.get("stoken") or "")
+	if not stoken:
+		raise BossAdapterFailure(ErrorCode.AUTHENTICATION_EXPIRED)
+	request_params = {**params, "__zp_stoken__": stoken}
 	headers = {
 		**endpoints.DEFAULT_HEADERS,
 		"User-Agent": str(credential.get("user_agent", endpoints.DEFAULT_HEADERS.get("User-Agent", ""))),
@@ -82,7 +86,7 @@ def _http_read(url: str, params: dict[str, Any], credential: dict[str, Any]) -> 
 	try:
 		response = httpx.get(
 			url,
-			params=params,
+			params=request_params,
 			cookies=credential.get("cookies", {}),
 			headers=headers,
 			follow_redirects=True,
@@ -269,8 +273,18 @@ class BossReadAdapter:
 			yield JobSearchBatch(items=items, progress=100)
 
 	def job_detail(self, reference: str) -> JobSourceDetail:
+		security_id = self._security_ids.get(reference)
+		if not security_id:
+			raise BossAdapterFailure(
+				ErrorCode.UNSUPPORTED_CAPABILITY,
+				"No server-owned security identifier is available for this job",
+			)
 		data = self._unwrap(
-			self._transport(endpoints.DETAIL_URL, {"encryptJobId": reference}, self._credential()),
+			self._transport(
+				endpoints.DETAIL_URL,
+				{"encryptJobId": reference, "securityId": security_id},
+				self._credential(),
+			),
 		)
 		detail = JobDetail.from_api(data)
 		if not detail.job_id:
