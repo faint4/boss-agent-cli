@@ -10,3 +10,7 @@
 # picking either side (task state lives in task.json, not index.md). See
 # .trellis/spec/cli/backend/directory-structure.md for details.
 .trellis/workspace/*/journal-*.md merge=union
+
+# Vite writes deterministic LF output on every platform. Keep the committed
+# production bundle byte-identical after a Windows checkout and rebuild.
+src/boss_agent_cli/web/static/** text eol=lf

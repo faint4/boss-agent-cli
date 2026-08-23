@@ -115,7 +115,8 @@ def _source_checks(repo_root: Path) -> list[dict[str, str]]:
 		template_ok = False
 
 	workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-	windows_ci_ok = all(
+	attributes = (repo_root / ".gitattributes").read_text(encoding="utf-8")
+	windows_ci_ok = "src/boss_agent_cli/web/static/** text eol=lf" in attributes and all(
 		marker in workflow
 		for marker in (
 			"developer_preview_windows:",
