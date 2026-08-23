@@ -101,6 +101,29 @@ export function logoutPlatformSession(): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/logout-platform-session", {});
 }
 
+export async function exportWorkspace(workspace: ApplicationSnapshot["active_workspace"]): Promise<void> {
+  const token = await authenticate();
+  const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspace)}/export`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("无法导出当前工作区，请确认已切换到该工作区后重试。");
+  const body = await response.json();
+  const blob = new Blob([JSON.stringify(body.export, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${workspace}-export.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export function clearWorkspace(
+  workspace: ApplicationSnapshot["active_workspace"],
+  confirmation: string,
+): Promise<ApplicationSnapshot> {
+  return sendCommand("/api/v1/commands/clear-workspace", { workspace, confirmation });
+}
+
 export function updateJobSearchGoal(goal: JobSearchGoal): Promise<ApplicationSnapshot> {
   return sendCommand("/api/v1/commands/update-job-search-goal", goal);
 }

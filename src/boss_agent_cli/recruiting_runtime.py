@@ -59,6 +59,10 @@ class RecruitingCredentialStore:
 		if workspace is WorkspaceKind.RECRUITING:
 			self._auth.logout()
 
+	def clear(self, workspace: WorkspaceKind) -> None:
+		if workspace is WorkspaceKind.RECRUITING:
+			self._auth.logout()
+
 	def session_revision(self, workspace: WorkspaceKind) -> str:
 		credential = self.active_credential(workspace)
 		if credential is None:

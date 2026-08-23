@@ -70,6 +70,18 @@ input, textarea { width: 100%; padding: 12px 14px; border: 1px solid #cbd8cf; bo
 input:focus, textarea:focus { outline: 3px solid rgb(87 232 154 / 30%); border-color: #32a86b; }
 .form-actions { display: flex; flex-wrap: wrap; gap: 8px; grid-column: 1 / -1; margin-top: 4px; }
 .danger-button { color: #7a231b; background: #ffd9d4; }
+.privacy-panel { margin: 18px 0; padding: 26px; background: #fff; border: 1px solid #dbe4dc; border-radius: 24px; }
+.privacy-panel .eyebrow { color: #377858; }
+.privacy-panel h2 { margin-bottom: 10px; font-size: 1.65rem; }
+.privacy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+.privacy-card { padding: 18px; color: #53655a; background: #f5f8f6; border: 1px solid #dce7df; border-radius: 16px; }
+.privacy-card.active { color: #244a37; background: #f1fff6; border-color: #45ad72; }
+.privacy-card h3 { margin-top: 0; color: #17211b; }
+.privacy-card p { line-height: 1.55; }
+.clear-zone { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.7fr) auto; align-items: end; gap: 14px; padding: 18px; background: #fff7f6; border: 1px solid #e7a19a; border-radius: 16px; }
+.clear-zone p { margin: 0; color: #69352f; line-height: 1.55; }
+.clear-zone label { display: grid; gap: 7px; color: #69352f; font-size: 0.82rem; font-weight: 750; }
+.clear-zone code { font-weight: 800; }
 .run-progress { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin-top: 18px; padding: 14px; background: #edf9f1; border-radius: 14px; }
 .run-progress progress { width: 100%; accent-color: #24a265; }
 .run-progress span { grid-column: 1 / -1; color: #586a5f; font-size: 0.82rem; }
@@ -126,6 +138,7 @@ input:focus, textarea:focus { outline: 3px solid rgb(87 232 154 / 30%); border-c
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .task-card { min-height: 300px; }
   .journey-grid { grid-template-columns: 1fr; }
+  .privacy-grid, .clear-zone { grid-template-columns: 1fr; }
   .goal-form { grid-template-columns: 1fr; }
   .goal-form label:first-child, .form-actions { grid-column: auto; }
   .facts { grid-template-columns: repeat(2, 1fr); }

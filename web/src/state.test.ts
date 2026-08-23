@@ -14,6 +14,7 @@ const emptySnapshot: ApplicationSnapshot = {
   error: null,
   job_seeking: null,
   recruiting: null,
+  workspace_privacy: [],
 };
 
 describe("deriveView", () => {

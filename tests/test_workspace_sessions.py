@@ -12,6 +12,7 @@ import pytest
 
 from boss_agent_cli.application import (
 	Application,
+	ClearWorkspaceCommand,
 	ConnectPlatformSessionCommand,
 	CurrentStateQuery,
 	LogoutPlatformSessionCommand,
@@ -174,6 +175,32 @@ def test_logout_has_a_visible_stopping_state_and_preserves_local_workspace_data(
 	assert sessions.platform_session_state(WorkspaceKind.JOB_SEEKING) is PlatformSessionState.DISCONNECTED
 	assert not registry.paths(WorkspaceKind.JOB_SEEKING).credential.exists()
 	assert registry.read_local_state(WorkspaceKind.JOB_SEEKING, "goal") == "Keep me"
+
+
+def test_confirmed_clear_removes_only_the_active_workspace_data_and_credential(tmp_path: Path):
+	application, registry, sessions = _application(tmp_path)
+	registry.write_local_state(WorkspaceKind.JOB_SEEKING, "goal", "Remove me")
+	sessions.begin_connect(WorkspaceKind.JOB_SEEKING)
+	assert sessions.wait_for_idle(timeout=2)
+
+	application.execute(SwitchWorkspaceCommand(WorkspaceKind.RECRUITING), _context())
+	registry.write_local_state(WorkspaceKind.RECRUITING, "opening", "Keep me")
+	sessions.begin_connect(WorkspaceKind.RECRUITING)
+	assert sessions.wait_for_idle(timeout=2)
+	recruiting_credential = registry.paths(WorkspaceKind.RECRUITING).credential
+	assert recruiting_credential.is_file()
+
+	application.execute(SwitchWorkspaceCommand(WorkspaceKind.JOB_SEEKING), _context())
+	result = application.execute(
+		ClearWorkspaceCommand(WorkspaceKind.JOB_SEEKING, "clear:job-seeking"),
+		_context(),
+	)
+
+	assert result.snapshot.platform_session is PlatformSessionState.DISCONNECTED
+	assert registry.read_local_state(WorkspaceKind.JOB_SEEKING, "goal") is None
+	assert not registry.paths(WorkspaceKind.JOB_SEEKING).credential.exists()
+	assert registry.read_local_state(WorkspaceKind.RECRUITING, "opening") == "Keep me"
+	assert recruiting_credential.is_file()
 
 
 def test_login_failure_enters_recovery_without_writing_a_credential(tmp_path: Path):

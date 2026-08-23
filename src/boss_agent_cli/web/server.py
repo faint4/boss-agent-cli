@@ -22,6 +22,7 @@ from boss_agent_cli.application import (
 	CurrentStateQuery,
 	DomainError,
 	RequestContext,
+	WorkspaceKind,
 )
 from boss_agent_cli.application.core_journey_contract import (
 	WEB_COMMANDS,
@@ -234,6 +235,48 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			include_body=include_body,
 		)
 
+	def _handle_workspace_export(self, path: str, *, include_body: bool) -> None:
+		prefix = "/api/v1/workspaces/"
+		suffix = "/export"
+		workspace_value = unquote(path.removeprefix(prefix).removesuffix(suffix))
+		if not workspace_value or "/" in workspace_value:
+			self._send_error(HTTPStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request", include_body=include_body)
+			return
+		try:
+			workspace = WorkspaceKind(workspace_value)
+		except ValueError:
+			self._send_error(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Not found", include_body=include_body)
+			return
+		try:
+			export = self.owner.application.export_workspace(
+				workspace,
+				RequestContext(
+					local_session_id=self.owner.authenticator.local_session_id,
+					correlation_id=self.owner.new_correlation_id(),
+				),
+			)
+		except DomainError as exc:
+			self._send_json(
+				HTTPStatus.CONFLICT,
+				{
+					"schema_version": "1",
+					"error": {
+						"code": exc.code,
+						"message": exc.message,
+						"recoverable": exc.recoverable,
+						"recovery_action": exc.recovery_action,
+						"correlation_id": exc.correlation_id,
+					},
+				},
+				include_body=include_body,
+			)
+			return
+		self._send_json(
+			HTTPStatus.OK,
+			{"schema_version": "1", "export": export},
+			include_body=include_body,
+		)
+
 	def _handle_command(self, path: str) -> None:
 		payload = self._read_json()
 		if payload is None:
@@ -351,6 +394,13 @@ class _LocalRequestHandler(BaseHTTPRequestHandler):
 			return
 		if method in {"GET", "HEAD"} and path == "/api/v1/state":
 			self._handle_state(include_body=include_body)
+			return
+		if (
+			method in {"GET", "HEAD"}
+			and path.startswith("/api/v1/workspaces/")
+			and path.endswith("/export")
+		):
+			self._handle_workspace_export(path, include_body=include_body)
 			return
 		if method in {"GET", "HEAD"} and path.startswith("/api/v1/runs/") and path.endswith("/events"):
 			self._handle_events(path, urlsplit(self.path).query, include_body=include_body)

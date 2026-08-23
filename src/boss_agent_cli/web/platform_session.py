@@ -144,6 +144,15 @@ class PlatformSessionManager:
 			self._threads.append(thread)
 			thread.start()
 
+	def clear(self, workspace: WorkspaceKind) -> None:
+		with self._lock:
+			if workspace is not self._active_workspace:
+				raise PermissionError("cannot clear an inactive workspace session")
+			self._generation += 1
+			self._active_credential = None
+			self._store.delete(workspace)
+			self._states[workspace] = PlatformSessionState.DISCONNECTED
+
 	def _finish_logout(self, workspace: WorkspaceKind, generation: int) -> None:
 		try:
 			self._store.delete(workspace)

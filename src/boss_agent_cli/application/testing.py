@@ -58,6 +58,21 @@ class InMemoryWorkspaceStore:
 		self.active_workspace(local_session_id)
 		return self._last_transition
 
+	def approximate_usage(self, workspace: WorkspaceKind) -> int:
+		return 0
+
+	def clear_workspace(self, workspace: WorkspaceKind) -> None:
+		if workspace is WorkspaceKind.JOB_SEEKING:
+			self._job_search_goal = None
+			self._job_shortlist = ()
+		else:
+			self._recruiting_opening = None
+		run = self._runs.pop(workspace, None)
+		if run is not None:
+			self._run_events.pop(run.run_id, None)
+		self._sensitive[workspace] = False
+		self._last_transition = "workspace-cleared"
+
 	def save_run(self, summary: RunSummary) -> None:
 		if summary.workspace is None:
 			raise ValueError("run workspace is required")
@@ -69,6 +84,10 @@ class InMemoryWorkspaceStore:
 
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None:
 		return self._runs.get(workspace)
+
+	def list_runs(self, workspace: WorkspaceKind) -> tuple[RunSummary, ...]:
+		run = self._runs.get(workspace)
+		return () if run is None else (run,)
 
 	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None:
 		self._run_events[event.run_id] = (*self._run_events.get(event.run_id, ()), event)
@@ -118,6 +137,10 @@ class InMemoryCredentialStore:
 
 	def begin_logout(self, workspace: WorkspaceKind) -> None:
 		self._states[workspace] = PlatformSessionState.STOPPING
+		self.rotate(workspace)
+
+	def clear(self, workspace: WorkspaceKind) -> None:
+		self._states[workspace] = PlatformSessionState.DISCONNECTED
 		self.rotate(workspace)
 
 	def session_revision(self, workspace: WorkspaceKind) -> str:

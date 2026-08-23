@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ from boss_agent_cli.application.contracts import (
 	AISuggestion,
 	CancelRunCommand,
 	CancelWriteIntentCommand,
+	ClearWorkspaceCommand,
 	CommandResult,
 	ConfirmWriteIntentCommand,
 	ConnectPlatformSessionCommand,
@@ -60,6 +62,8 @@ from boss_agent_cli.application.contracts import (
 	SwitchWorkspaceCommand,
 	UpdateJobSearchGoalCommand,
 	WorkspaceKind,
+	WorkspaceExport,
+	WorkspacePrivacySummary,
 	WriteIntentState,
 	WriteIntentSummary,
 )
@@ -70,9 +74,12 @@ class WorkspaceStore(Protocol):
 	def switch_workspace(self, local_session_id: str, workspace: WorkspaceKind) -> None: ...
 	def sensitive_content_present(self, workspace: WorkspaceKind) -> bool: ...
 	def last_transition(self, local_session_id: str) -> str | None: ...
+	def approximate_usage(self, workspace: WorkspaceKind) -> int: ...
+	def clear_workspace(self, workspace: WorkspaceKind) -> None: ...
 	def save_run(self, summary: RunSummary) -> None: ...
 	def save_run_event(self, summary: RunSummary, event: ApplicationEvent) -> None: ...
 	def load_latest_run(self, workspace: WorkspaceKind) -> RunSummary | None: ...
+	def list_runs(self, workspace: WorkspaceKind) -> tuple[RunSummary, ...]: ...
 	def append_event(self, workspace: WorkspaceKind, event: ApplicationEvent) -> None: ...
 	def read_events(self, workspace: WorkspaceKind, run_id: str) -> tuple[ApplicationEvent, ...]: ...
 	def discard_run(self, workspace: WorkspaceKind, run_id: str) -> None: ...
@@ -89,6 +96,7 @@ class CredentialStore(Protocol):
 	def activate(self, workspace: WorkspaceKind) -> None: ...
 	def begin_connect(self, workspace: WorkspaceKind) -> None: ...
 	def begin_logout(self, workspace: WorkspaceKind) -> None: ...
+	def clear(self, workspace: WorkspaceKind) -> None: ...
 	def session_revision(self, workspace: WorkspaceKind) -> str: ...
 
 
@@ -251,6 +259,84 @@ class Application:
 			return self._ai.configuration()
 		except (OSError, RuntimeError, TypeError, ValueError):
 			return AIProviderConfiguration(configured=False)
+
+	def _workspace_privacy(self) -> tuple[WorkspacePrivacySummary, ...]:
+		excluded = (
+			"credentials-cookies-and-tokens",
+			"resumes-contact-details-and-chats",
+			"drafts-and-write-intents",
+			"logs-and-transient-content",
+		)
+		return (
+			WorkspacePrivacySummary(
+				workspace=WorkspaceKind.JOB_SEEKING,
+				approximate_bytes=self._workspace_store.approximate_usage(WorkspaceKind.JOB_SEEKING),
+				retained_categories=(
+					"search-goal-and-filters",
+					"job-shortlist",
+					"recoverable-runs",
+					"protected-platform-session",
+				),
+				default_export_includes=(
+					"search-goal-and-filters",
+					"job-shortlist",
+					"recoverable-run-checkpoints",
+				),
+				default_export_excludes=excluded,
+			),
+			WorkspacePrivacySummary(
+				workspace=WorkspaceKind.RECRUITING,
+				approximate_bytes=self._workspace_store.approximate_usage(WorkspaceKind.RECRUITING),
+				retained_categories=(
+					"selected-opening",
+					"recoverable-runs",
+					"protected-platform-session",
+				),
+				default_export_includes=(
+					"selected-opening",
+					"recoverable-run-checkpoints",
+				),
+				default_export_excludes=excluded,
+			),
+		)
+
+	def export_workspace(self, workspace: WorkspaceKind, context: RequestContext) -> WorkspaceExport:
+		if self._active_workspace(context) is not workspace:
+			raise DomainError(
+				code=ErrorCode.WORKSPACE_MISMATCH,
+				message="Switch to the selected Workspace before exporting it",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action=f"Switch to {workspace.value} and request the export again",
+			)
+		excluded = (
+			"credentials-cookies-and-tokens",
+			"resumes-contact-details-and-chats",
+			"drafts-and-write-intents",
+			"logs-and-transient-content",
+		)
+		return WorkspaceExport(
+			schema_version="1",
+			workspace=workspace,
+			generated_at=self._clock(),
+			job_search_goal=(
+				self._workspace_store.load_job_search_goal()
+				if workspace is WorkspaceKind.JOB_SEEKING
+				else None
+			),
+			job_shortlist=(
+				self._workspace_store.load_job_shortlist()
+				if workspace is WorkspaceKind.JOB_SEEKING
+				else ()
+			),
+			selected_opening=(
+				self._workspace_store.load_recruiting_opening()
+				if workspace is WorkspaceKind.RECRUITING
+				else None
+			),
+			recoverable_runs=self._workspace_store.list_runs(workspace),
+			excluded_categories=excluded,
+		)
 
 	def _transition_run(self, summary: RunSummary, kind: RunEventKind, **payload: object) -> None:
 		with self._lock:
@@ -420,11 +506,23 @@ class Application:
 		if isinstance(command, LogoutPlatformSessionCommand):
 			self._invalidate_write_intent("平台会话已退出，本次确认已取消。")
 			with self._lock:
+				active_run_id = (
+					self._active_run.run_id
+					if self._active_run is not None
+					and self._run_workspace is workspace
+					and self._active_run.state == "running"
+					else None
+				)
+			if active_run_id is not None:
+				self._cancel_run(CancelRunCommand(active_run_id), workspace, context)
+			with self._lock:
 				self._ai_suggestion = None
 			if workspace is WorkspaceKind.RECRUITING:
 				self._clear_recruiting_sensitive()
 			self._credential_store.begin_logout(workspace)
 			return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
+		if isinstance(command, ClearWorkspaceCommand):
+			return self._clear_workspace(command, workspace, context)
 		if isinstance(command, UpdateJobSearchGoalCommand):
 			self._require_job_workspace(workspace, context)
 			if not command.goal.objective.strip() or not command.goal.keyword.strip():
@@ -488,6 +586,81 @@ class Application:
 			correlation_id=context.correlation_id,
 			recoverable=False,
 		)
+
+	def _clear_workspace(
+		self,
+		command: ClearWorkspaceCommand,
+		workspace: WorkspaceKind,
+		context: RequestContext,
+	) -> CommandResult:
+		if command.workspace is not workspace:
+			raise DomainError(
+				code=ErrorCode.WORKSPACE_MISMATCH,
+				message="Switch to the Workspace before clearing it",
+				correlation_id=context.correlation_id,
+				recoverable=True,
+				recovery_action=f"Switch to {command.workspace.value} and review the clear scope again",
+			)
+		if command.confirmation != f"clear:{workspace.value}":
+			raise DomainError(
+				code=ErrorCode.INVALID_COMMAND,
+				message="Exact Workspace clear confirmation is required",
+				correlation_id=context.correlation_id,
+				recoverable=False,
+				recovery_action=f"Enter clear:{workspace.value} exactly",
+			)
+		with self._lock:
+			active_run = (
+				self._active_run
+				if self._active_run is not None
+				and self._run_workspace is workspace
+				and self._active_run.state in {"queued", "running", "stopping"}
+				else None
+			)
+		if active_run is not None and active_run.state == "running":
+			self._cancel_run(CancelRunCommand(active_run.run_id), workspace, context)
+		elif active_run is not None:
+			with self._lock:
+				cancel_event = self._cancel_events.get(active_run.run_id)
+				if cancel_event is not None:
+					cancel_event.set()
+		if active_run is not None:
+			deadline = time.monotonic() + 2
+			while time.monotonic() < deadline:
+				with self._lock:
+					if self._active_run is None or self._active_run.state not in {
+						"queued",
+						"running",
+						"stopping",
+					}:
+						break
+				time.sleep(0.01)
+			else:
+				raise DomainError(
+					code=ErrorCode.CANCELLATION_REQUESTED,
+					message="The active Run did not stop before the clear deadline",
+					correlation_id=context.correlation_id,
+					recoverable=True,
+					recovery_action="Wait for the Run to stop, then confirm the clear again",
+				)
+		with self._lock:
+			self._invalidate_write_intent("Workspace 已清除，本次确认已取消。")
+			self._credential_store.clear(workspace)
+			self._workspace_store.clear_workspace(workspace)
+			self._active_run = None
+			self._run_workspace = None
+			self._events.clear()
+			self._cancel_events.clear()
+			self._job_results = ()
+			self._selected_job = None
+			self._selected_job_session_revision = None
+			self._opening_results = ()
+			self._applicant_results = ()
+			self._selected_prospect = None
+			self._last_error = None
+			self._write_intent = None
+			self._ai_suggestion = None
+		return CommandResult(snapshot=self.query(CurrentStateQuery(), context))
 
 	def _request_ai_assistance(
 		self,
@@ -1670,6 +1843,7 @@ class Application:
 					endpoint=ai_configuration.endpoint,
 					suggestion=self._ai_suggestion,
 				),
+				workspace_privacy=self._workspace_privacy(),
 			)
 
 	def events(

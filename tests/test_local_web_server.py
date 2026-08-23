@@ -254,6 +254,179 @@ def test_api_requires_the_in_memory_startup_session(tmp_path: Path):
 	assert snapshot["active_run"] is None
 
 
+def test_authenticated_workspace_export_uses_an_allowlist_and_omits_sensitive_canaries(
+	tmp_path: Path,
+	capsys: pytest.CaptureFixture[str],
+):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-1",
+		session_token_factory=lambda: "session-token",
+	)
+	registry = WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-1")
+	registry.save_job_search_goal(JobSearchGoal("寻找后端岗位", "Python", city="上海"))
+	paths = registry.paths(WorkspaceKind.JOB_SEEKING)
+	paths.credential.write_bytes(b"PASSWORD_CANARY COOKIE_CANARY TOKEN_CANARY")
+	(paths.root / "resume.txt").write_text("RESUME_CANARY", encoding="utf-8")
+	(paths.root / "chat.log").write_text("CHAT_CANARY", encoding="utf-8")
+	application = Application(
+		workspace_store=registry,
+		credential_store=InMemoryCredentialStore(),
+		boss=FakeBossAdapter(),
+	)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		status, headers, body = _request(
+			server,
+			"GET",
+			"/api/v1/workspaces/job-seeking/export",
+			headers={"Authorization": f"Bearer {token}"},
+		)
+	finally:
+		server.close()
+
+	assert status == 200
+	assert headers["Content-Type"] == "application/json"
+	payload = json.loads(body)
+	assert payload["export"]["workspace"] == "job-seeking"
+	assert payload["export"]["job_search_goal"]["keyword"] == "Python"
+	assert payload["export"]["excluded_categories"] == [
+		"credentials-cookies-and-tokens",
+		"resumes-contact-details-and-chats",
+		"drafts-and-write-intents",
+		"logs-and-transient-content",
+	]
+	for canary in (
+		b"PASSWORD_CANARY",
+		b"COOKIE_CANARY",
+		b"TOKEN_CANARY",
+		b"RESUME_CANARY",
+		b"CHAT_CANARY",
+	):
+		assert canary not in body
+	captured = capsys.readouterr()
+	assert "CANARY" not in captured.out
+	assert "CANARY" not in captured.err
+
+
+def test_workspace_privacy_routes_reject_unauthorized_invalid_and_cross_workspace_requests(tmp_path: Path):
+	with _running_server(tmp_path) as server:
+		unauthorized_status, _, _ = _request(
+			server,
+			"GET",
+			"/api/v1/workspaces/job-seeking/export",
+		)
+		token = _exchange(server)
+		invalid_status, _, _ = _request(
+			server,
+			"GET",
+			"/api/v1/workspaces/unknown/export",
+			headers={"Authorization": f"Bearer {token}"},
+		)
+		inactive_status, _, inactive_body = _request(
+			server,
+			"GET",
+			"/api/v1/workspaces/recruiting/export",
+			headers={"Authorization": f"Bearer {token}"},
+		)
+		malformed_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/clear-workspace",
+			headers=_command_headers(server, token),
+			body={
+				"request_id": "clear-malformed",
+				"workspace": "job-seeking",
+				"confirmation": "clear:job-seeking",
+				"unexpected": True,
+			},
+		)
+		cross_origin_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/clear-workspace",
+			headers={
+				"Authorization": f"Bearer {token}",
+				"Origin": "http://attacker.example",
+				"Sec-Fetch-Site": "cross-site",
+			},
+			body={
+				"request_id": "clear-cross-origin",
+				"workspace": "job-seeking",
+				"confirmation": "clear:job-seeking",
+			},
+		)
+
+	assert unauthorized_status == 401
+	assert invalid_status == 404
+	assert inactive_status == 409
+	assert json.loads(inactive_body)["error"]["code"] == "WORKSPACE_MISMATCH"
+	assert malformed_status == 400
+	assert cross_origin_status == 403
+
+
+def test_workspace_clear_requires_exact_scope_confirmation_and_returns_the_empty_snapshot(tmp_path: Path):
+	authenticator = StartupAuthenticator(
+		bootstrap_token="bootstrap-token",
+		local_session_id="local-session-clear",
+		session_token_factory=lambda: "session-token",
+	)
+	registry = WorkspaceRegistry(tmp_path / "data", local_session_id="local-session-clear")
+	registry.save_job_search_goal(JobSearchGoal("寻找后端岗位", "Python"))
+	application = Application(
+		workspace_store=registry,
+		credential_store=InMemoryCredentialStore(),
+		boss=FakeBossAdapter(),
+	)
+	server = LocalWebServer(
+		static_root=_static_root(tmp_path),
+		authenticator=authenticator,
+		application=application,
+	)
+	server.start()
+	try:
+		token = _exchange(server)
+		headers = _command_headers(server, token)
+		wrong_status, _, _ = _request(
+			server,
+			"POST",
+			"/api/v1/commands/clear-workspace",
+			headers=headers,
+			body={
+				"request_id": "clear-wrong",
+				"workspace": "job-seeking",
+				"confirmation": "clear everything",
+			},
+		)
+		status, _, body = _request(
+			server,
+			"POST",
+			"/api/v1/commands/clear-workspace",
+			headers=headers,
+			body={
+				"request_id": "clear-correct",
+				"workspace": "job-seeking",
+				"confirmation": "clear:job-seeking",
+			},
+		)
+	finally:
+		server.close()
+
+	assert wrong_status == 400
+	assert status == 200
+	snapshot = json.loads(body)["snapshot"]
+	assert snapshot["active_workspace"] == "job-seeking"
+	assert snapshot["platform_session"] == "disconnected"
+	assert snapshot["job_seeking"]["goal"] is None
+	assert snapshot["job_seeking"]["shortlist"] == []
+
+
 def test_bootstrap_token_is_single_use_and_errors_do_not_leak_it(tmp_path: Path):
 	with _running_server(tmp_path) as server:
 		wrong_status, _, wrong_body = _request(
