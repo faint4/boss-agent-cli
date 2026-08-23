@@ -28,3 +28,12 @@ uv run python scripts/probe_recruiter_chat_frontend.py --friend-id 12345 --outpu
 ```
 
 `--dry-run` 仅打印将执行的 JS payload 用于审阅，不连 CDP。
+
+## developer_preview_gate.py
+
+Developer Preview 的源码产物和人工证据门禁。`source` 检查已提交的生产 Web 资源、干净检出启动说明、Windows 完整测试 CI、Browser Bridge 隔离和脱敏证据模板，并输出可复现的 `source_build_sha256`；`validate-evidence` 严格校验仓库外保存的真实 BOSS 人工验收记录，只接受明确成功的写入，不接受自由文本或额外字段。
+
+```bash
+uv run python scripts/developer_preview_gate.py source --repo-root .
+uv run python scripts/developer_preview_gate.py validate-evidence <redacted-evidence.json>
+```

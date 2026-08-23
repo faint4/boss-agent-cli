@@ -21,12 +21,19 @@ uv run patchright install chromium
 Start the source-delivered Developer Preview Web shell with one command:
 
 ```bash
+cd web
+pnpm install --frozen-lockfile
+pnpm run build
+cd ..
+uv run python scripts/developer_preview_gate.py source --repo-root .
 uv run boss-web
 ```
 
-Python serves the production-built React UI on a random `127.0.0.1` port and opens the browser after the listener is ready. Startup credentials are process-scoped and memory-only. This path currently renders shared application state; it does not connect Browser Bridge or execute a real BOSS workflow.
+Python serves the production-built React UI on a random `127.0.0.1` port and opens the browser after the listener is ready. Startup credentials are process-scoped and memory-only. Job-Seeking and Recruiting use physically separate data, run, cache, credential, and Platform Session stores. Connect opens an official BOSS login window; Browser Bridge is not part of this runtime, and every Platform Write requires its own server-owned confirmation.
 
 After changing frontend sources under `web/`, run `cd web && pnpm install --frozen-lockfile && pnpm run build` to update the production assets shipped in the Python package.
+
+Run `uv run patchright install chromium` before connecting a real BOSS account. Real accounts must use the production assets served by Python, never a Vite development or preview server. See [Developer Preview acceptance](developer-preview.en.md) for the automated matrix, the manual boundary, and the redacted evidence format.
 
 ## 2. Local preflight
 
